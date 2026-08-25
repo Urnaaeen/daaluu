@@ -1,314 +1,317 @@
-import { BlurView } from "expo-blur";
+import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import BlurredBackdrop from "../components/BlurredBackdrop";
+import { useAppState } from "../context/AppStateContext";
+import { usePresence } from "../context/PresenceContext";
 import { useTheme } from "../context/ThemeContext";
-import { Image as ExpoImage } from 'expo-image';
+import { PALETTE } from "../theme/colors";
 
-type ModalMode = "join" | "create";
+const TILE_LEFT = require("../assets/objects/11.png");
+const TILE_RIGHT = require("../assets/objects/12.png");
+
+// Цэсний зурсан icon-ууд (menu-icons.png-ээс тасалсан)
+const ICON_BOT = require("../assets/zurag/icon-bot.png");
+const ICON_RANDOM = require("../assets/zurag/icon-random.png");
+const ICON_FRIENDS = require("../assets/zurag/icon-friends.png");
 
 export default function Menu() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { playerName, roomPrice } = useAppState();
+  const { online, connected } = usePresence();
 
-  // ===== STATES =====
-  const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<ModalMode>("join");
-  const [roomCode, setRoomCode] = useState("");
-  const [playerName, setPlayerName] = useState("");
-  const [isCreated, setIsCreated] = useState(false);
+  const nameInitial = (playerName.trim()[0] ?? "Т").toUpperCase();
 
-  // ===== HELPERS =====
-  const generateRoomCode = () => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setRoomCode(code);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    setIsCreated(false);
-    setRoomCode("");
-    setPlayerName("");
-  };
-
-  // ===== UI =====
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* LOGO */}
+      <BlurredBackdrop />
+
+      {/* ПРОФАЙЛ */}
+      <Pressable
+        onPress={() => router.push("/profile")}
+        style={({ pressed }) => [
+          styles.profileBtn,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          pressed && styles.pressedDown,
+        ]}
+      >
+        <Text style={[styles.profileBtnText, { color: colors.text }]}>{nameInitial}</Text>
+      </Pressable>
+
+      {/* ЛОГО */}
       <View style={styles.logoBox}>
-        <ExpoImage
-          source={require("../assets/zurag/menu1.png")}
-          style={styles.logoImage}
-          contentFit="contain"
-          cachePolicy="memory-disk"
-          transition={200}
+        <View style={styles.logoTiles}>
+          <ExpoImage
+            source={TILE_LEFT}
+            style={[styles.logoTile, styles.logoTileLeft]}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={200}
+          />
+          <ExpoImage
+            source={TILE_RIGHT}
+            style={[styles.logoTile, styles.logoTileRight]}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={200}
+          />
+        </View>
+        <Text style={styles.appTitle}>Цай хураах</Text>
+        <Text style={styles.appSub}>Монгол даалуу · 5 тоглогч</Text>
+      </View>
+
+      {/* ГОРИМУУД */}
+      <View style={styles.menu}>
+        <ModeCard
+          icon={ICON_BOT}
+          title="Боттой тоглох"
+          sub="Үнэгүй · 4 боттой уралдана"
+          onPress={() => router.push("/playScreen")}
+          colors={colors}
+        />
+
+        <ModeCard
+          icon={ICON_RANDOM}
+          title="Санамсаргүй хүнтэй"
+          sub={connected ? `${online} хүн онлайн · хүлээнэ` : "Сервер холбогдож байна…"}
+          onPress={() => router.push("/match")}
+          colors={colors}
+        />
+
+        <ModeCard
+          icon={ICON_FRIENDS}
+          title="Өөрийн хүмүүстэй"
+          sub="ID-гаар найзуудаа урина"
+          badge={`🪙 ${roomPrice}`}
+          onPress={() => router.push("/roomAdmin")}
+          colors={colors}
         />
       </View>
 
-      {/* MENU */}
-      <View style={styles.menu}>
-        <Pressable
-          style={[styles.button, { backgroundColor: colors.card }]}
-          onPress={() => {
-            setModalMode("create");
-            generateRoomCode();
-            setIsCreated(false);
-            setShowModal(true);
-          }}
-        >
-          <Text style={[styles.buttonText, { color: colors.title }]}>
-            Тоглоом үүсгэх
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.button, { backgroundColor: colors.card }]}
-          onPress={() => {
-            setModalMode("join");
-            setRoomCode("");
-            setShowModal(true);
-          }}
-        >
-          <Text style={[styles.buttonText, { color: colors.title }]}>
-            Холбогдож тоглох
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.button, { backgroundColor: colors.card }]}
-          onPress={() => router.push("/playScreen")}
-        >
-          <Text style={[styles.buttonText, { color: colors.title }]}>
-            Боттой тоглох
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.button, { backgroundColor: colors.card }]}
-          onPress={() => router.push("/rules")}
-        >
-          <Text style={[styles.buttonText, { color: colors.title }]}>
-            Тоглоомын заавар
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* ========== MODAL ========== */}
-      <Modal visible={showModal} transparent animationType="slide">
-        <Pressable style={StyleSheet.absoluteFill} onPress={closeModal}>
-          <BlurView
-            intensity={35}
-            tint={colors.background === "#FFFFFF" ? "light" : "dark"}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-        </Pressable>
-
-        <KeyboardAvoidingView
-          style={styles.modalWrapper}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            <View style={styles.header}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {modalMode === "create" ? "Тоглоом үүсгэх" : "Холбогдох"}
-              </Text>
-              <Pressable onPress={closeModal}>
-                <Text style={[styles.close, { color: colors.text }]}>✕</Text>
-              </Pressable>
-            </View>
-
-            <Text style={[styles.label, { color: colors.subText }]}>
-              Өрөөний код
-            </Text>
-            <TextInput
-              style={[
-                styles.codeInput,
-                { color: colors.text, borderColor: colors.border },
-              ]}
-              placeholder="# 0000"
-              placeholderTextColor={colors.subText}
-              keyboardType="number-pad"
-              maxLength={4}
-              editable={modalMode === "join"}
-              value={roomCode}
-              onChangeText={setRoomCode}
-            />
-
-            <Text style={[styles.label, { color: colors.subText }]}>
-              Тоглогчийн нэр
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                { backgroundColor: colors.card, color: colors.text },
-              ]}
-              placeholder="Нэрээ оруулна уу"
-              placeholderTextColor={colors.subText}
-              value={playerName}
-              onChangeText={setPlayerName}
-            />
-
-            <Pressable
-              style={[
-                styles.actionBtn,
-                { backgroundColor: colors.text },
-              ]}
-              onPress={() => {
-                if (modalMode === "create") {
-                  if (!isCreated) {
-                    setIsCreated(true);
-                  } else {
-                    setShowModal(false);
-                    router.push({
-                      pathname: "/multiplayer",
-                      params: {
-                        roomCode,
-                        host: "true",
-                        playerName,
-                      },
-                    });
-                  }
-                } else {
-                  setShowModal(false);
-                  router.push({
-                    pathname: "/multiplayer",
-                    params: {
-                      roomCode,
-                      host: "false",
-                      playerName,
-                    },
-                  });
-                }
-              }}
-            >
-              <Text
-                style={[
-                  styles.actionText,
-                  { color: colors.background },
-                ]}
-              >
-                {modalMode === "create"
-                  ? isCreated
-                    ? "Эхлэх"
-                    : "Үүсгэх"
-                  : "Холбогдох"}
-              </Text>
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* ЗААВАР */}
+      <Pressable
+        onPress={() => router.push("/rules")}
+        style={({ pressed }) => [
+          styles.rulesBtn,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          pressed && styles.pressedDown,
+        ]}
+      >
+        <Text style={[styles.rulesBtnText, { color: colors.subText }]}>?</Text>
+      </Pressable>
     </View>
   );
 }
 
-/* ========== STYLES (UNCHANGED STRUCTURE) ========== */
+/* ========== MODE CARD ========== */
+
+function ModeCard({
+  icon,
+  title,
+  sub,
+  badge,
+  onPress,
+  colors,
+}: {
+  icon: any;
+  title: string;
+  sub: string;
+  badge?: string;
+  onPress: () => void;
+  colors: any;
+}) {
+  // Хулгана дээгүүр очих (эсвэл дарах) үед л хүрээ улбар шар болно
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      style={({ pressed }) => [
+        styles.modeCard,
+        {
+          backgroundColor: colors.card,
+          borderColor: hovered || pressed ? colors.accent : colors.border,
+        },
+        pressed && styles.pressedDown,
+      ]}
+    >
+      <ExpoImage
+        source={icon}
+        style={styles.modeIcon}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        transition={200}
+      />
+      <View style={styles.modeBody}>
+        <View style={styles.modeTitleRow}>
+          <Text style={[styles.modeTitle, { color: colors.text }]}>{title}</Text>
+          {badge && (
+            <View style={styles.coinBadge}>
+              <Text style={styles.coinBadgeText}>{badge}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.modeSub, { color: colors.subText }]}>{sub}</Text>
+      </View>
+      <Text style={[styles.chevron, { color: colors.muted }]}>›</Text>
+    </Pressable>
+  );
+}
+
+/* ========== STYLES ========== */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 34,
+  },
+
+  pressedDown: {
+    transform: [{ translateY: 2 }],
+  },
+
+  profileBtn: {
+    position: "absolute",
+    top: 16,
+    right: 22,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+
+  profileBtnText: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  logoBox: {
+    alignItems: "center",
+    marginTop: 16,
+    gap: 12,
+  },
+
+  logoTiles: {
+    width: 120,
+    height: 104,
+  },
+
+  logoTile: {
+    position: "absolute",
+    width: 62,
+    height: 96,
+  },
+
+  logoTileLeft: {
+    left: 4,
+    top: 8,
+    transform: [{ rotate: "-12deg" }],
+  },
+
+  logoTileRight: {
+    right: 4,
+    top: 2,
+    transform: [{ rotate: "10deg" }],
+  },
+
+  appTitle: {
+    fontSize: 34,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+
+  appSub: {
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: -8,
+    color: "rgba(255,255,255,0.85)",
+  },
+
+  menu: {
+    gap: 10,
+    marginTop: 26,
+  },
+
+  modeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    padding: 15,
+    borderRadius: 20,
+    borderWidth: 2,
+  },
+
+  modeIcon: {
+    width: 48,
+    height: 48,
+  },
+
+  modeBody: {
+    flex: 1,
+  },
+
+  modeTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  modeTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  coinBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: PALETTE.goldSoft,
+  },
+
+  coinBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: PALETTE.gold,
+  },
+
+  modeSub: {
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 1,
+  },
+
+  chevron: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  rulesBtn: {
+    position: "absolute",
+    bottom: 34,
+    left: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  logoBox: {
-    width: 200,
-    height: 200,
-    marginBottom: 40,
-  },
-
-  logoImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  menu: {
-    width: "80%",
-  },
-
-  button: {
-    paddingVertical: 14,
-    borderRadius: 20,
-    marginBottom: 14,
-    alignItems: "center",
-  },
-
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-
-  modalWrapper: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-
-  card: {
-    padding: 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-
-  close: {
-    fontSize: 22,
-    fontWeight: "600",
-  },
-
-  label: {
-    fontSize: 14,
-    marginTop: 12,
-    marginBottom: 6,
-  },
-
-  codeInput: {
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: 4,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-  },
-
-  input: {
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-  },
-
-  actionBtn: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 24,
-  },
-
-  actionText: {
-    fontSize: 16,
-    fontWeight: "600",
+  rulesBtnText: {
+    fontSize: 20,
+    fontWeight: "900",
   },
 });
-
-
-// npx expo start --tunnel

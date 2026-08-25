@@ -1,5 +1,6 @@
 
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
@@ -16,5 +17,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const database = getDatabase(app);
+
+// Firebase консол дээр Authentication асаагаагүй бол нэвтрэлт локал горимд шилжинэ
+export const auth = getAuth(app);
 
 console.log('🔥 Firebase холбогдлоо!');

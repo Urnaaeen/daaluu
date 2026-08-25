@@ -1,487 +1,341 @@
+import { useRouter } from "expo-router";
+import { useRef, useState } from "react";
 import {
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
+import { MONO } from "../theme/colors";
+import ChatModule, { type ChatModuleRef } from "./ask";
+
+type TabKey = "gunshin" | "rules" | "score";
+
+// Модны гуншин — нүдний тоогоор нь эрэмбэлсэн
+const GUNSHIN = [
+  { key: "daaluu", title: "Даалуу", rank: "12 нүд", description: "Даа хамбан даалуу\nДахаа чирсэн хулгайч", image: require("../assets/objects/12.png") },
+  { key: "uuluu", title: "Үүлүү", rank: "11 нүд", description: "Хуран цэргийн ханжин\nХурандаа цолтой хуутуу", image: require("../assets/objects/11.png") },
+  { key: "arav1", title: "Бажгар арав", rank: "10 нүд", description: "Хар арав Хандын найз\nХанд хүүхэн миний найз", image: require("../assets/objects/10_1.png") },
+  { key: "arav2", title: "Сийлүү арав", rank: "10 нүд", description: "Сэндэр модны хайлаас\nСэнтийж байвал сийлүү", image: require("../assets/objects/10_2.png") },
+  { key: "ys1", title: "Дэгээ ес", rank: "9 нүд", description: "Дэгээ есөнд дээлээ уруулж\nДэгжин хүүхэн нүүрээ маажуул", image: require("../assets/objects/9_1.png") },
+  { key: "ys2", title: "Гавал ес", rank: "9 нүд", description: "Толгой дээгүүр сэнгэнэдэг\nДоржсэндэн гавал", image: require("../assets/objects/9_2.png") },
+  { key: "naim1", title: "Дөнгө найм", rank: "8 нүд", description: "Дөнгөн сээрийн мөнгөн хүзүү\nДөрвөн далайн тэлээгүй түшмэл", image: require("../assets/objects/8_1.png") },
+  { key: "naim2", title: "Муруй найм", rank: "8 нүд", description: "Тэмээ наймын тэнгэр мэдэг\nТэнэсэн бандийн аз мэдэг", image: require("../assets/objects/8_1_1.png") },
+  { key: "naim3", title: "Чавганц найм", rank: "8 нүд", description: "Наян жил насалсан\nНамбигар улаан чавганцаа", image: require("../assets/objects/8_2.png") },
+  { key: "doloo1", title: "Сарлаг долоо", rank: "7 нүд", description: "Долоо уулын сарлаг\nДогшин газрын садваг", image: require("../assets/objects/7_1.png") },
+  { key: "doloo2", title: "Шанага долоо", rank: "7 нүд", description: "Долоон бурхан шинжтэй\nДолнуур авгайн шанага", image: require("../assets/objects/7_2_1.png") },
+  { key: "doloo3", title: "Шор долоо", rank: "7 нүд", description: "Гонзгор долоо гоохолзоно\nГовийн хүүхэн шоохолзоно", image: require("../assets/objects/7_2_2.png") },
+  { key: "zurgaa1", title: "Чанс зургаа", rank: "6 нүд", description: "Ханан хээтэй чанс\nХаяа голын бургас", image: require("../assets/objects/6_1.png") },
+  { key: "zurgaa2", title: "Нохой", rank: "6 нүд", description: "Зуудаг нохойн зулзага\nЗургаан нүхтэй даалуу", image: require("../assets/objects/6_2_1.png") },
+  { key: "zurgaa3", title: "Булуу зургаа", rank: "6 нүд", description: "Булуу зургаа будантай\nБуцаад ирэхэд манантай", image: require("../assets/objects/6_2_2.png") },
+  { key: "tav", title: "Чүү тав", rank: "5 нүд", description: "Хайргүй хатгаж нойргүй\nХонуулдаг алтан чүү тав", image: require("../assets/objects/5.png") },
+  { key: "duruv1", title: "Банд", rank: "4 нүд", description: "Вандан суудал\nЗандан ширээ", image: require("../assets/objects/4_1.png") },
+  { key: "duruv2", title: "Бөхөөн дөрөв", rank: "4 нүд", description: "Өөхий бөөхий дөрөв\nӨвчүү номин шаргал", image: require("../assets/objects/4_2.png") },
+  { key: "hoyr", title: "Ёоз", rank: "2 нүд", description: "Хон хэрээний нүд\nХоёр нүдний дуран", image: require("../assets/objects/2.png") },
+  { key: "nuuts", title: "Нууц мод", rank: "1 нүд", description: "Хосгүй 2 мод гаргахад\nнууц мод болж хаагдана", image: require("../assets/objects/secret.png") },
+];
 
 const RULES = [
-  {
-    key: "janlii",
-    title: "Цай",
-    description: "Цай хураах тоглоомонд 10 модыг цай гэж нэрлэж тусад нь авах бөгөөд 5 тоглогч бүрт тэнцүү хувааж тоглоом эхлэнэ. Өөрөөр хэлбэл оноо бүртгэхэд ашиглагддаг моднууд",
-    icon: "👑",
-    images: [
-      require("../assets/objects/9_1.png"),
-    ],
-  },
-  {
-    key: "chai",
-    title: "Гарын мод",
-    description: "Хар, цагаан нийлсэн 50 ширхэг модыг хольж, тоглогч бүр 10 модтойгоор тоглоомыг эхлүүлнэ.",
-    icon: "☕",
-    images: [
-      require("../assets/objects/4_2.png"),
-    ],
-  },
-  {
-    key: "muumod",
-    title: "Өнгө нэрлэх",
-    description: "Хос жанлийтай тоглогч гарахдаа ямар өнгийн ус дуудахаа сонгох бөгөөд хамгийн том усыг дуудаж идэх боломжтой.",
-    icon: "🚫",
-    images: [
-      require("../assets/objects/11.png"),
-    ],
-  },
-  {
-    key: "muumod",
-    title: "Өнгө дагуулах",
-    description: "Тоглогч хос гаргах үед дараа дараагийн тоглогчид гарч буй ижил өнгийн ус модоо өгнө.",
-    icon: "🚫",
-    images: [
-      require("../assets/objects/11.png"),
-    ],
-  },
-  {
-    key: "muumod",
-    title: "Мод гарах",
-    description: "нэг модоор гарах бол 8 буюу түүнээс дээш нүдтэй модоор гарна. Хос мод буюу усаар гарах үед нүдний тоо үл хамаарна.",
-    icon: "🚫",
-    images: [
-      require("../assets/objects/11.png"),
-    ],
-  },
-  {
-    key: "muumod",
-    title: "Мод ахиулах",
-    description: "Жанлийгаас бусад модыг заавал өнгө дагуу ахиулж тавих ёстой. Ахиулж идээгүй тохиолдолд тухайн том мод ямар ч хэрэггүй муу мод болж үхдэг.",
-    icon: "🚫",
-    images: [
-      require("../assets/objects/11.png"),
-    ],
-  },
-  {
-    key: "muumod",
-    title: "Муу мод өгөх",
-    description: "Гарааг ахиулах модгүй тохиолдолд өнгө үл харгалзан муу мод өгч болно.",
-    icon: "🚫",
-    images: [
-      require("../assets/objects/11.png"),
-    ],
-  },
-  {
-    key: "muumod",
-    title: "Муу үхэх",
-    description: "Гараа хос жанлийгаа гаргалгуй өнгөрвөл жанлий үхдэг. Мөн ус дуудах үед, өнгө дагасан хос авч үлдвэл үхдэг.",
-    icon: "🚫",
-    images: [
-      require("../assets/objects/11.png"),
-    ],
-  },
+  { num: "01", title: "Тоглогч эрэмбэлэх", description: "Тоглоом эхлэхийн өмнө тоглогчдийн байрлалыг өөрчлөх боломжтой." },
+  { num: "02", title: "Тоглогчийн тоо", description: "Холбогдсон тоглогчийн тоо үл хамааран тоглолт эхлэх боломжтой." },
+  { num: "03", title: "Цай", description: "Цай хураах тоглоомд 10 модыг цай гэж нэрлэж тусад нь авах бөгөөд 5 тоглогч бүрт тэнцүү тарааж өгнө." },
+  { num: "04", title: "Гарын мод", description: "Тоглоомны үлдсэн модыг (50) хольж, тоглогчид 10 модтойгоор тоглоомыг эхлүүлнэ." },
+  { num: "05", title: "Жанлий нэрлэх", description: "Жанлийд нэрлэгдсэн мод бүх модыг дийлэх бөгөөд тоглолт эхлүүлэгч модоо харахаас өмнө нэрлэх ёстой." },
+  { num: "06", title: "Гараа булаах", description: "Хос жанлийтай бол гараа булаадаг, ингэснээр жанлий дуудсан тоглогч гараагаа үргэлжлүүлэн тоглоно." },
+  { num: "07", title: "Өнгө нэрлэх", description: "Хос жанлийтай тоглогч гарахдаа ямар өнгийн ус дуудахаа сонгох бөгөөд хамгийн том усыг дуудах эрхтэй." },
+  { num: "08", title: "Өнгө дагуулах", description: "Тоглогч хос гарах үед дараа дараагийн тоглогчид гарт буй ижил өнгийн ус модоо өгнө." },
+  { num: "09", title: "Мод гарах", description: "Нэг модоор гарах бол 8 буюу түүнээс дээш нүдтэй модоор гарна. Хос мод буюу усаар гарах үед нүдний тоо үл хамаарна." },
+  { num: "10", title: "Мод ахиулах", description: "Жанлийгаас бусад модыг заавал өнгө дагуу ахиулах ёстой бөгөөд жанлий болсон мод ямар ч модыг идэх эрхтэй." },
+  { num: "11", title: "Муу мод өгөх", description: "Гарааг заавал ахиулах ёстой бөгөөд боломжгүй тохиолдолд өнгө үл харгалзан муу мод өгч болно." },
+  { num: "12", title: "Мод үхэх", description: "Гараа хос жанлийгаа гаргалгүй өнгөрвөл жанлий үхдэг. Мөн ус дуудах үед, өнгө дагасан хос авч үлдвэл үхдэг." },
 ];
 
 const FINALLY = [
-  {
-    key: "janlii",
-    title: "Ялагч",
-    description: "Тоглолтын төгсгөлд хамгийн их цай хураасан тоглогч ялагч болно. Нийт цайг авлага оролцуулан тоооцно.",
-    icon: "👑",
-    images: [
-      require("../assets/objects/9_1.png"),
-    ],
-  },
-  {
-    key: "chai",
-    title: "Гэр авах",
-    description: "Бүх мод дуусах үед гэр босгож чадаагүй бол 2-оос илүү гэртэй хүнээс өөрт буй цайгаар худалдаж авах эсвэл зээлнэ.",
-    icon: "☕",
-    images: [
-      require("../assets/objects/4_2.png"),
-    ],
-  },
-  {
-    key: "chai",
-    title: "Цай авах",
-    description: "Бүх мод дуусах үед 2-оос их гэр барьсан тоглогч гэр бариагүй тоглогчид гэрээ цайгаар зарах эсвэл авлагатай болно.",
-    icon: "☕",
-    images: [
-      require("../assets/objects/4_2.png"),
-    ],
-  }
+  { key: "winner", title: "Ялагч", description: "Тоглолтын төгсгөлд хамгийн их цай хураасан тоглогч ялагч болно. Нийт цайг авлага оролцуулан тооцно." },
+  { key: "ger", title: "Гэр авах", description: "Бүх мод дуусах үед гэр босгож чадаагүй бол 2-оос илүү гэртэй хүнээс өөрт буй цайгаар худалдаж авах эсвэл зээлнэ." },
+  { key: "tsai", title: "Цай авах", description: "Бүх мод дуусах үед 2-оос их гэр барьсан тоглогч гэр бариагүй тоглогчид гэрээ цайгаар зарах эсвэл авлагатай болно." },
 ];
 
-const TSAGAAN_TILES = [
-  {
-    key: "uuluu",
-    title: "Үүлүү",
-    description: "Хуран цэргийн ханжин\nХурандаа цолтой хуутуу",
-    image: require("../assets/objects/11.png"),
-  },
-  {
-    key: "arav",
-    title: "Бажгар арав",
-    description: "Хар арав Хандын найз\nХанд хүүхэн миний найз",
-    image: require("../assets/objects/10_1.png"),
-  },
-  {
-    key: "ys",
-    title: "Дэгээ ес",
-    description: "Дэгээ есөнд дээлээ уруулж\nДэгжин хүүхэн нүүрээ маажуул",
-    image: require("../assets/objects/9_1.png"),
-  },
-  {
-    key: "naim",
-    title: "Дөнгө найм",
-    description: "Дөнгөн сээрийн мөнгөн хүзүү\nДөрвөн далайн тэлээгүй түшмэл",
-    image: require("../assets/objects/8_1.png"),
-  },
-  {
-    key: "naim",
-    title: "Муруй найм",
-    description: "Тэмээ наймын тэнгэр мэдэг\nТэнэсэн бандийн аз мэдэг",
-    image: require("../assets/objects/8_1_1.png"),
-  },
-  {
-    key: "doloo",
-    title: "Сарлаг долоо",
-    description: "Долоо уулын сарлаг\nДогшин газрын садваг",
-    image: require("../assets/objects/7_1.png"),
-  },
-  {
-    key: "zurgaa",
-    title: "Чанс зургаа",
-    description: "Ханан хээтэй чанс\nХаяа голын бургас",
-    image: require("../assets/objects/6_1.png"),
-  },
-  {
-    key: "tav",
-    title: "Чүү тав",
-    description: "Хайргүй хатгаж нойргүй\nХонуулдаг алтан чүү тав",
-    image: require("../assets/objects/5.png"),
-  },
-    {
-    key: "duruv",
-    title: "Банд",
-    description: "Вандан суудал\nЗандан ширээ",
-    image: require("../assets/objects/4_1.png"),
-  },
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "gunshin", label: "Гуншин" },
+  { key: "rules", label: "Дүрэм" },
+  { key: "score", label: "Оноо" },
 ];
-
-const ULAAN_TILES = [
-  {
-    key: "daaluu",
-    title: "Даалуу",
-    description: "Даа хамбан даалнн\nДахаа чирсэн хулгайч",
-    image: require("../assets/objects/12.png"),
-  },
-  {
-    key: "arav",
-    title: "Сийлүү арав",
-    description: "Сэндэр модны хайлаас\nСэнтийж байвал сийлүү",
-    image: require("../assets/objects/10_2.png"),
-  },
-  {
-    key: "ys",
-    title: "Гавал ес",
-    description: "Толгой дээгүүр сэнгэнэдэг\nДоржсэндэн гавал",
-    image: require("../assets/objects/9_2.png"),
-  },
-  {
-    key: "naim",
-    title: "Чавганц найм",
-    description: "Наян жил насалсан\nНамбигар улаан чавганцаа",
-    image: require("../assets/objects/8_2.png"),
-  },
-  {
-    key: "doloo",
-    title: "Шанага долоо",
-    description: "Долоон бурхан шинжтэй\nДолнуур авгайн шанага",
-    image: require("../assets/objects/7_2_1.png"),
-  },
-  {
-    key: "doloo",
-    title: "Шор долоо",
-    description: "Гонзгор долоо гоохолзоно\nГовийн хүүхэн шоохолзоно",
-    image: require("../assets/objects/7_2_2.png"),
-  },
-  {
-    key: "zurgaa",
-    title: "Нохой",
-    description: "Зуудаг нохойн зулзага\nЗургаан нүхтэй даалуу",
-    image: require("../assets/objects/6_2_1.png"),
-  },
-  {
-    key: "zurgaa",
-    title: "Булуу зургаа",
-    description: "Булуу зургаа будантай\nБуцаад ирэхэд манантай",
-    image: require("../assets/objects/6_2_2.png"),
-  },
-  {
-    key: "duruv",
-    title: "Бөхөөн дөрөв",
-    description: "Өөхий бөөхий дөрөв\nӨвчүү номин шаргал",
-    image: require("../assets/objects/4_2.png"),
-  },
-  {
-    key: "hoyr",
-    title: "Ёоз",
-    description: "Хон хэрээний нүд\nХоёр нүдний дуран",
-    image: require("../assets/objects/2.png"),
-  },
-];
-
-const CARD_WIDTH = 260;
 
 /* ================= COMPONENT ================= */
 
 export default function Rules() {
+  const router = useRouter();
   const { colors } = useTheme();
+  const [tab, setTab] = useState<TabKey>("gunshin");
+  const chatModuleRef = useRef<ChatModuleRef>(null);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* HEADER */}
+      <View style={styles.headerWrap}>
+        <View style={styles.headerRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [
+              styles.backBtn,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              pressed && styles.pressedDown,
+            ]}
+          >
+            <Text style={[styles.backBtnText, { color: colors.text }]}>‹</Text>
+          </Pressable>
+          <View>
+            <Text style={[styles.header, { color: colors.text }]}>Тоглоомын заавар</Text>
+            <Text style={[styles.headerSub, { color: colors.muted }]}>
+              5 тоглогч · ганцаарчилсан стратеги
+            </Text>
+          </View>
+        </View>
 
-      <Text style={[styles.header, { color: colors.text }]}>
-        Цай хураах
-      </Text>
-      <Text style={[{ color: colors.text }]}>
-        5 тоглогчтой, ганцаарчилсан стратеги
-      </Text>
-      <Text style={[{ color: colors.text }]}>
-        Даалуу нь монголчуудын нийтлэг тоглоомнуудын нэг. 
-        Цай хураах тоглоомын зорилго нь нэг тоглогч бүх цайг хураахад оршино.
-      </Text>
+        {/* TABS */}
+        <View style={[styles.tabs, { backgroundColor: colors.sunken }]}>
+          {TABS.map((t) => (
+            <Pressable
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              style={[
+                styles.tabBtn,
+                tab === t.key && { backgroundColor: colors.card },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: tab === t.key ? colors.text : colors.muted },
+                ]}
+              >
+                {t.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
-      {/* ===== МОДНЫ ГУНШИН ===== */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Модны гуншин
-        </Text>
-
-        {/* ЦАГААН */}
-        <Text style={[styles.subTitle, { color: colors.subText }]}>
-          Цагаан
-        </Text>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {TSAGAAN_TILES.map(item => (
+      {/* CONTENT */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        {tab === "gunshin" &&
+          GUNSHIN.map((item) => (
             <View
               key={item.key}
               style={[
                 styles.gunshinCard,
-                { width: CARD_WIDTH, backgroundColor: colors.card },
+                { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              <Image source={item.image} style={styles.image} />
-
+              <Image source={item.image} style={styles.image} resizeMode="contain" />
               <View style={styles.textWrap}>
-                <Text style={[styles.title, { color: colors.text }]}>
-                  {item.title}
-                </Text>
-                <Text
-                  style={[styles.description, { color: colors.subText }]}
-                >
+                <View style={styles.titleRow}>
+                  <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.rank, { color: colors.muted }]}>{item.rank}</Text>
+                </View>
+                <Text style={[styles.description, { color: colors.subText }]}>
                   {item.description}
                 </Text>
               </View>
             </View>
           ))}
-        </ScrollView>
 
-        {/* УЛААН */}
-        <Text style={[styles.subTitle, { color: colors.subText }]}>
-          Улаан
-        </Text>
+        {tab === "rules" &&
+          RULES.map((rule) => (
+            <View
+              key={rule.num}
+              style={[
+                styles.card,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.titleRowLeft}>
+                <View style={[styles.numBox, { backgroundColor: colors.sunken }]}>
+                  <Text style={[styles.numText, { color: colors.subText }]}>{rule.num}</Text>
+                </View>
+                <Text style={[styles.title, { color: colors.text }]}>{rule.title}</Text>
+              </View>
+              <Text style={[styles.description, { color: colors.subText, marginTop: 8 }]}>
+                {rule.description}
+              </Text>
+            </View>
+          ))}
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {ULAAN_TILES.map(item => (
+        {tab === "score" &&
+          FINALLY.map((item) => (
             <View
               key={item.key}
               style={[
-                styles.gunshinCard,
-                { width: CARD_WIDTH, backgroundColor: colors.card },
-              ]}
-            >
-              <Image source={item.image} style={styles.image} />
-
-              <View style={styles.textWrap}>
-                <Text style={[styles.title, { color: colors.text }]}>
-                  {item.title}
-                </Text>
-                <Text
-                  style={[styles.description, { color: colors.subText }]}
-                >
-                  {item.description}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* ===== Дүрэм ===== */}
-      <Text style={[styles.header, { color: colors.text }]}>
-        Дүрэм
-      </Text>
-
-      <View style={{ height: 190 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {RULES.map(rule => (
-            <View
-              key={rule.key}
-              style={[
                 styles.card,
-                { backgroundColor: colors.card },
+                { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              <View style={styles.textSection}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.icon}>{rule.icon}</Text>
-                  <Text style={[styles.title, { color: colors.text }]}>
-                    {rule.title}
-                  </Text>
-                </View>
-
-                <Text
-                  style={[styles.description, { color: colors.subText }]}
-                >
-                  {rule.description}
-                </Text>
-              </View>
+              <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
+              <Text style={[styles.description, { color: colors.subText, marginTop: 6 }]}>
+                {item.description}
+              </Text>
             </View>
           ))}
-        </ScrollView>
-      </View>
 
-      {/* ===== Оноо тооцох ===== */}
-      <Text style={[styles.header, { color: colors.text }]}>
-        Оноо тооцох
-      </Text>
+        <PushButton
+          label="Ойлгомжгүй байна уу? Дүрэм асуу"
+          color={colors.accent}
+          shadowColor={colors.accentDark}
+          onPress={() => chatModuleRef.current?.open()}
+          style={{ marginTop: 4 }}
+        />
+      </ScrollView>
 
-      <View style={{ height: 190 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {FINALLY.map(success => (
-            <View
-              key={success.key}
-              style={[
-                styles.card,
-                { backgroundColor: colors.card },
-              ]}
-            >
-              <View style={styles.textSection}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.icon}>{success.icon}</Text>
-                  <Text style={[styles.title, { color: colors.text }]}>
-                    {success.title}
-                  </Text>
-                </View>
-
-                <Text
-                  style={[styles.description, { color: colors.subText }]}
-                >
-                  {success.description}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-    </ScrollView>
+      <ChatModule ref={chatModuleRef} />
+    </View>
   );
 }
 
-/* ================= STYLES (NO COLORS) ================= */
+/* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: 16,
-    paddingLeft: 16,
-    flex: 1,
+  headerWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 12,
+  },
+
+  pressedDown: {
+    transform: [{ translateY: 2 }],
+  },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  backBtnText: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: -2,
   },
 
   header: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 14,
+    fontSize: 19,
+    fontWeight: "800",
   },
 
-  section: {
-    marginBottom: 24,
-  },
-
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
-
-  subTitle: {
-    fontSize: 16,
+  headerSub: {
+    fontSize: 12,
     fontWeight: "600",
-    marginBottom: 8,
+    marginTop: 1,
   },
 
-  card: {
-    width: 300,
-    borderRadius: 24,
-    padding: 16,
-    marginRight: 14,
+  tabs: {
+    flexDirection: "row",
+    gap: 6,
+    padding: 4,
+    borderRadius: 14,
+  },
+
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 11,
+    alignItems: "center",
+  },
+
+  tabText: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  container: {
+    paddingHorizontal: 20,
+    paddingBottom: 60,
+    paddingTop: 6,
+    gap: 12,
   },
 
   gunshinCard: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 22,
-    padding: 14,
-    marginRight: 14,
+    gap: 14,
+    borderRadius: 18,
+    borderWidth: 2,
+    padding: 12,
   },
 
-  textSection: {
-    marginBottom: 16,
+  card: {
+    borderRadius: 18,
+    borderWidth: 2,
+    padding: 14,
   },
 
   titleRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
+    alignItems: "baseline",
+    gap: 8,
   },
 
-  icon: {
-    fontSize: 22,
-    marginRight: 8,
+  titleRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+
+  numBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  numText: {
+    fontSize: 12,
+    fontFamily: MONO,
   },
 
   title: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  rank: {
+    fontSize: 12,
+    fontFamily: MONO,
   },
 
   description: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  imageRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 12,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 19,
   },
 
   image: {
-    width: 44,
-    height: 78,
-    marginRight: 6,
-    marginBottom: 8,
-    borderRadius: 10,
+    width: 46,
+    height: 74,
   },
 
   textWrap: {
     flex: 1,
     justifyContent: "center",
+    gap: 2,
   },
 });

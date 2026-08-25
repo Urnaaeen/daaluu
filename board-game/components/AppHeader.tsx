@@ -1,26 +1,23 @@
-import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Switch, View } from "react-native";
+import { usePathname, useRouter } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { Image as ExpoImage } from 'expo-image';
-import { useEffect } from 'react';
+
+// Тоглоомын ширээн дээр header нуугдана (дэлгэц бүтэн ногоон ширээ болно)
+const HIDDEN_ROUTES = ["/playScreen", "/multiplayerGame", "/long"];
 
 export default function AppHeader() {
   const router = useRouter();
-  const { theme, toggleTheme } = useTheme();
-  const { colors } = useTheme();
+  const pathname = usePathname();
+  const { theme, toggleTheme, colors } = useTheme();
 
-  useEffect(() => {
-    ExpoImage.prefetch([
-      require("../assets/zurag/dark.png"),
-      require("../assets/zurag/light.png")
-    ]);
-  }, []);
+  if (HIDDEN_ROUTES.includes(pathname)) return null;
 
   return (
     <View
       style={[
         styles.header,
-        { backgroundColor: colors.header },
+        { backgroundColor: colors.background },
       ]}
     >
       {/* LEFT – LOGO */}
@@ -38,16 +35,17 @@ export default function AppHeader() {
         />
       </Pressable>
 
-      <Switch
-        value={theme === "dark"}
-        onValueChange={toggleTheme}
-        trackColor={{
-          false: colors.card,
-          true: colors.card
-        }}
-        thumbColor={theme === "dark" ? "#dbe9ff" : "#FFFFFF"}
-        ios_backgroundColor={colors.card}
-      />
+      {/* RIGHT – THEME TOGGLE */}
+      <Pressable
+        onPress={toggleTheme}
+        style={({ pressed }) => [
+          styles.themeBtn,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          pressed && { transform: [{ translateY: 2 }] },
+        ]}
+      >
+        <Text style={styles.themeIcon}>{theme === "dark" ? "🌙" : "☀️"}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -64,5 +62,18 @@ const styles = StyleSheet.create({
   logo: {
     width: 110,
     height: 28,
+  },
+
+  themeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  themeIcon: {
+    fontSize: 15,
   },
 });

@@ -5,14 +5,16 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import Avatar from '../components/ui/Avatar';
 import { useTheme } from '../context/ThemeContext';
-import OpenAI from 'openai';
+import { PALETTE } from '../theme/colors';
+// import OpenAI from 'openai';   // ⬅️ GPT API түлхүүр тавихдаа энэ мөрийг буцааж нээ
 
 export interface ChatMessage {
   id: string;
@@ -27,10 +29,49 @@ export interface ChatModuleRef {
   addMessage: (sender: 'player' | 'bot', text: string) => void;
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY,  // ⬅️ API key-ээ .env файлд хадгална
-  dangerouslyAllowBrowser: true,
-});
+/* ===== GPT API ТҮР ХААСАН =====
+   API түлхүүр байхгүй тул OpenAI дуудлагыг комментод оруулав.
+   Түлхүүрээ .env дэх EXPO_PUBLIC_OPENAI_API_KEY-д тавьсны дараа:
+     1) дээрх `import OpenAI from 'openai';` мөрийг нээ
+     2) доорх getOpenAI-г нээ
+     3) handleSendMessage доторх "GPT ДУУДЛАГА" блокийг нээж, offline хариултыг хаа
+
+let openaiClient: OpenAI | null = null;
+const getOpenAI = () => {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? "",
+      dangerouslyAllowBrowser: true,
+    });
+  }
+  return openaiClient;
+};
+*/
+
+// API-гүй үед дүрмээс түлхүүр үгээр нь хариулна
+const OFFLINE_ANSWERS: { keys: string[]; answer: string }[] = [
+  { keys: ['жанлий нэрлэ', 'жанлий дууд', 'жанлий сонго'], answer: 'Жанлийд нэрлэгдсэн мод бүх модыг дийлнэ. Тоглолт эхлүүлэгч нь модоо харахаас ӨМНӨ жанлийгаа нэрлэх ёстой.' },
+  { keys: ['гараа булаа', 'булаах'], answer: 'Хос жанлийтай бол гараа булаадаг. Ингэснээр жанлий дуудсан тоглогч гараагаа үргэлжлүүлэн тоглоно.' },
+  { keys: ['жанлий', 'janlii'], answer: 'Жанлий бол бүх модыг идэх боломжтой мод. Тоглолт эхлүүлэгч модоо харахаас өмнө нэрлэдэг. Хос жанлийтай тоглогч гарахдаа ямар өнгийн ус дуудахаа сонгох эрхтэй. Хос жанлийгаа гаргалгүй өнгөрвөл жанлий үхнэ.' },
+  { keys: ['үх', 'муу мод'], answer: 'Ахиулж идээгүй том мод муу мод болж үхнэ. Мөн хос жанлийгаа гаргалгүй өнгөрвөл, эсвэл ус дуудах үед өнгө дагасан хос авч үлдвэл үхнэ.' },
+  { keys: ['гэр'], answer: 'Гарын хамгийн том мод гаргасан тоглогч гэр авна, хосоор ялвал 2 гэр. Бүх мод дуусахад гэр бариагүй бол 2-оос илүү гэртэй хүнээс цайгаар худалдаж авах эсвэл зээлнэ.' },
+  { keys: ['цай'], answer: '10 модыг цай гэж тусад нь авч, 5 тоглогчид тэнцүү хуваана. Төгсгөлд хамгийн их цай хураасан тоглогч ялна — нийт цайг авлага оролцуулан тооцно.' },
+  { keys: ['өнгө'], answer: 'Модны цэгийн нэг нь улаан бол улаан мод, бүгд цагаан бол цагаан мод. Хос гарсны дараа дараагийн тоглогчид ижил өнгийн ус модоо өгнө.' },
+  { keys: ['гарах', 'эхл'], answer: 'Нэг модоор гарах бол 8 буюу түүнээс дээш нүдтэй модоор гарна. Хос буюу усаар гарахад нүдний тоо үл хамаарна.' },
+  { keys: ['нохой'], answer: 'Нохой бол 6 цэгтэй ч бүх модны хамгийн том нь бөгөөд ямар ч өнгийн модыг иддэг.' },
+  { keys: ['нууц'], answer: 'Хосгүй 2 мод гаргахад тэр нь нууц мод болж хаагдана. Нууц модны rank 1 тул тухайн гарыг авахгүй.' },
+];
+
+const offlineAnswer = (q: string) => {
+  const lower = q.toLowerCase();
+  const hit = OFFLINE_ANSWERS.find(a => a.keys.some(k => lower.includes(k)));
+  return hit
+    ? hit.answer
+    : 'GPT туслах одоогоор идэвхгүй байна (API түлхүүр тавиагүй). Заавар дэлгэцийн "Дүрэм" таб дээрээс бүрэн дүрмийг харна уу.';
+};
+
+// Түгээмэл асуултын чипүүд
+const SUGGESTIONS = ['Жанлий гэж юу вэ?', 'Хэзээ мод үхэх вэ?', 'Гэр яаж барих вэ?'];
 
 // Тоглоомын дүрэм
 const GAME_RULES = `Та "Цай хураах" тоглоомын дүрэм мэргэжилтэн бот мөн.
@@ -46,6 +87,12 @@ const GAME_RULES = `Та "Цай хураах" тоглоомын дүрэм м�
 
 🎯 ТОГЛООМЫН ДҮРЭМ:
 
+0️⃣ ЖАНЛИЙ НЭРЛЭХ:
+- Жанлий гэдэг нь бүх модыг идэх боломжтой мод
+- Жанлийд нэрлэгдсэн мод бүх модыг дийлнэ
+- Тоглолт эхлүүлэгч нь модоо ХАРАХААС ӨМНӨ жанлийгаа нэрлэх ёстой
+- ГАРАА БУЛААХ: хос жанлийтай бол гараа булаадаг, ингэснээр жанлий дуудсан тоглогч гараагаа үргэлжлүүлэн тоглоно
+
 1️⃣ МОД ГАРАХ:
 - Нэг модоор гарах бол заавал 8 буюу түүнээс дээш нүдтэй модоор гарна
 - Хос мод буюу усаар гарах үед нүдний тоо үл хамаарна
@@ -56,8 +103,8 @@ const GAME_RULES = `Та "Цай хураах" тоглоомын дүрэм м�
 мод гаргахдаа өнгө таарсан мод гаргах    нэг модны дээр байрлах цэгийн нэг л улаан өнгөтэй байвал тэр улаан мод
 харин бүгд цагаан цэг байвал цагаан мод болдог.
 
-Моднууд хэрхэн нэг нэгийгээ иддэг вэ гэвэл модны дээр байгаа цэгийн тоо их бол тухайн мод том мод 
-дээрх цэгээрээ ранклагддаг. 
+Моднууд хэрхэн нэг нэгийгээ иддэг вэ гэвэл модны дээр байгаа цэгийн тоо их бол тухайн мод том мод
+дээрх цэгээрээ ранклагддаг.
 
 Онцгой тохиолдол:
 Нохой гэдэг нэртэй 6 ширхэг цэгтэй мод бол бүх модны хамгийн том  тэгээд ямар ч өнгийн модыг иддэг.
@@ -124,8 +171,8 @@ const ChatModule = React.forwardRef<ChatModuleRef>((props, ref) => {
     },
   }));
 
-  const handleSendMessage = async () => {
-    const text = inputText.trim();
+  const handleSendMessage = async (textOverride?: string) => {
+    const text = (textOverride ?? inputText).trim();
     if (!text || isLoading) return;
 
     const now = Date.now();
@@ -149,28 +196,27 @@ const ChatModule = React.forwardRef<ChatModuleRef>((props, ref) => {
     scrollToBottom();
 
     try {
+      /* ===== GPT ДУУДЛАГА (API түлхүүр тавихад энэ блокийг нээ) =====
       console.log('🤖 OpenAI API дуудаж байна...');
       console.log('📤 Асуулт:', text);
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', 
+      const completion = await getOpenAI().chat.completions.create({
+        model: 'gpt-4o-mini',
         messages: [
-          {
-            role: 'system',
-            content: GAME_RULES,
-          },
-          {
-            role: 'user',
-            content: text,
-          },
+          { role: 'system', content: GAME_RULES },
+          { role: 'user', content: text },
         ],
         max_tokens: 1000,
         temperature: 0.7,
       });
 
       const answer = completion.choices[0].message.content || 'Хариулт олдсонгүй';
-      
       console.log('✅ OpenAI хариулт:', answer.substring(0, 100) + '...');
+      ===== GPT ДУУДЛАГА ТӨГСӨВ ===== */
+
+      // API-гүй үеийн offline хариулт (GPT-г нээхдээ энэ 2 мөрийг устга)
+      await new Promise(resolve => setTimeout(resolve, 400));
+      const answer = offlineAnswer(text);
 
       // Bot мессаж нэмэх
       setMessages(prev =>
@@ -185,10 +231,10 @@ const ChatModule = React.forwardRef<ChatModuleRef>((props, ref) => {
       );
       scrollToBottom();
     } catch (e: any) {
-      console.error('❌ OpenAI алдаа:', e);
+      console.error('❌ Чат алдаа:', e);
 
       let errorMessage = '❌ Алдаа гарлаа';
-      
+
       if (e.status === 401) {
         errorMessage = '❌ API Key буруу байна. Кодыг шалгана уу.';
       } else if (e.status === 429) {
@@ -226,17 +272,15 @@ const ChatModule = React.forwardRef<ChatModuleRef>((props, ref) => {
         <View
           style={[
             styles.messageBubble,
-            {
-              backgroundColor: isPlayer ? colors.card : colors.background,
-              borderColor: colors.card,
-              borderWidth: isPlayer ? 0 : 1,
-            },
+            isPlayer
+              ? [styles.playerBubble, { backgroundColor: colors.accent }]
+              : [styles.botBubble, { backgroundColor: colors.card }],
           ]}
         >
           <Text
             style={[
               styles.messageText,
-              { color: isPlayer ? colors.background : colors.text },
+              { color: isPlayer ? '#fff' : colors.text },
             ]}
           >
             {item.text}
@@ -246,95 +290,117 @@ const ChatModule = React.forwardRef<ChatModuleRef>((props, ref) => {
     );
   };
 
+  // Хаалттай үед DOM-д үлдэхгүйн тулд бүрмөсөн салгана (RN Web)
+  if (!isVisible) return null;
+
   return (
     <Modal
-      visible={isVisible}
+      visible
       animationType="slide"
-      transparent={false}
+      transparent
       onRequestClose={() => setIsVisible(false)}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.header,
-            { backgroundColor: colors.card, borderBottomColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.headerTitle, { color: colors.title }]}>
-            💬 Тоглоомын Дүрэм
-          </Text>
+      <View style={styles.overlay}>
+        <Pressable style={{ flex: 1 }} onPress={() => setIsVisible(false)} />
 
-          <Pressable
-            onPress={() => setIsVisible(false)}
-            style={({ pressed }) => [
-              styles.closeButton,
-              { opacity: pressed ? 0.6 : 1 },
-            ]}
-          >
-            <Text style={[styles.closeButtonText, { color: colors.background }]}>
-              ✕
-            </Text>
-          </Pressable>
-        </View>
-
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.messagesList}
-          onContentSizeChange={scrollToBottom}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyText, { color: colors.text }]}>
-                Тоглоомын дүрмийн талаар асуугаарай!
+        <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+          {/* HEADER */}
+          <View style={[styles.header, { borderBottomColor: colors.border }]}>
+            <Avatar label="Д" color={colors.accent} size={40} radius={13} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>
+                Дүрмийн туслах
               </Text>
+              <Text style={styles.headerStatus}>Онлайн · шууд хариулна</Text>
             </View>
-          }
-        />
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[
-            styles.inputArea,
-            { backgroundColor: colors.background, borderTopColor: colors.border },
-          ]}
-        >
-          <TextInput
-            style={[
-              styles.textInput,
-              {
-                backgroundColor: colors.card,
-                color: colors.text,
-                borderColor: colors.border,
-              },
-            ]}
-            placeholder="Асуулт асуух..."
-            placeholderTextColor={colors.text}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={500}
-            editable={!isLoading}
+            <Pressable
+              onPress={() => setIsVisible(false)}
+              style={({ pressed }) => [
+                styles.closeButton,
+                { backgroundColor: colors.sunken, opacity: pressed ? 0.6 : 1 },
+              ]}
+            >
+              <Text style={[styles.closeButtonText, { color: colors.subText }]}>✕</Text>
+            </Pressable>
+          </View>
+
+          {/* MESSAGES */}
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={scrollToBottom}
+            ListEmptyComponent={
+              <View style={[styles.messageBubble, styles.botBubble, { backgroundColor: colors.card, alignSelf: 'flex-start' }]}>
+                <Text style={[styles.messageText, { color: colors.text }]}>
+                  Сайн уу! Цай хураахын дүрмээр юу ч асуу.
+                </Text>
+              </View>
+            }
           />
 
-          <Pressable
-            onPress={handleSendMessage}
-            disabled={isLoading || !inputText.trim()}
-            style={({ pressed }) => [
-              styles.sendButton,
-              {
-                backgroundColor: colors.card,
-                opacity: (pressed || isLoading || !inputText.trim()) ? 0.5 : 1
-              },
-            ]}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
-            <Text style={[styles.sendButtonText, { color: colors.background }]}>
-              {isLoading ? '⏳' : '➤'}
-            </Text>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+            {/* SUGGESTIONS */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.suggestionsRow}
+              keyboardShouldPersistTaps="handled"
+            >
+              {SUGGESTIONS.map(q => (
+                <Pressable
+                  key={q}
+                  onPress={() => handleSendMessage(q)}
+                  disabled={isLoading}
+                  style={({ pressed }) => [
+                    styles.suggestionChip,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                    (pressed || isLoading) && { opacity: 0.6 },
+                  ]}
+                >
+                  <Text style={[styles.suggestionText, { color: colors.subText }]}>{q}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {/* INPUT */}
+            <View style={[styles.inputArea, { borderTopColor: colors.border }]}>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: colors.sunken, color: colors.text },
+                ]}
+                placeholder="Асуултаа бичнэ үү…"
+                placeholderTextColor={colors.muted}
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                maxLength={500}
+                editable={!isLoading}
+              />
+
+              <Pressable
+                onPress={() => handleSendMessage()}
+                disabled={isLoading || !inputText.trim()}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  {
+                    backgroundColor: colors.accent,
+                    opacity: (pressed || isLoading || !inputText.trim()) ? 0.5 : 1
+                  },
+                ]}
+              >
+                <Text style={styles.sendButtonText}>{isLoading ? '⏳' : '↑'}</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </View>
     </Modal>
   );
 });
@@ -342,58 +408,99 @@ const ChatModule = React.forwardRef<ChatModuleRef>((props, ref) => {
 ChatModule.displayName = 'ChatModule';
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,12,16,0.5)',
+  },
+
+  sheet: {
+    height: '86%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
+
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    gap: 12,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  closeButton: { padding: 8 },
-  closeButtonText: { fontSize: 24, fontWeight: 'bold' },
+  headerTitle: { fontSize: 16, fontWeight: '800' },
+  headerStatus: { fontSize: 11, fontWeight: '600', color: PALETTE.green, marginTop: 1 },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: { fontSize: 15, fontWeight: '800' },
 
-  messagesList: { padding: 16,paddingBottom: 20, flexGrow: 1 },
-  messageContainer: { marginBottom: 20, flexDirection: 'row' },
+  messagesList: { padding: 18, paddingBottom: 20, flexGrow: 1, gap: 10 },
+  messageContainer: { flexDirection: 'row' },
   playerMessage: { justifyContent: 'flex-end' },
   botMessage: { justifyContent: 'flex-start' },
   messageBubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    maxWidth: '78%',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
-  messageText: { fontSize: 14, lineHeight: 20 },
+  playerBubble: {
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 6,
+  },
+  botBubble: {
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 18,
+  },
+  messageText: { fontSize: 13, fontWeight: '600', lineHeight: 20 },
 
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 },
-  emptyText: { fontSize: 14, textAlign: 'center' },
+  suggestionsRow: {
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+  },
+  suggestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 2,
+  },
+  suggestionText: { fontSize: 12, fontWeight: '700' },
 
   inputArea: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
-    gap: 8,
-    margin: 10,
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+    borderTopWidth: 2,
   },
   textInput: {
     flex: 1,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     fontSize: 14,
+    fontWeight: '600',
     maxHeight: 100,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sendButtonText: { fontSize: 18, fontWeight: 'bold' },
+  sendButtonText: { fontSize: 17, fontWeight: '800', color: '#fff' },
 });
 
 export default ChatModule;

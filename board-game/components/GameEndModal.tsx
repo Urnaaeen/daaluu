@@ -2,6 +2,10 @@
 import React from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { FinalScorePlayer } from "../app/trading";
+import { useTheme } from "../context/ThemeContext";
+import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
+import Avatar from "./ui/Avatar";
+import PushButton from "./ui/PushButton";
 
 type GameEndModalProps = {
     visible: boolean;
@@ -18,64 +22,64 @@ export default function GameEndModal({
     onRestart,
     onExit
 }: GameEndModalProps) {
+    const { colors } = useTheme();
+
+    // Хаалттай үед DOM-д үлдэхгүйн тулд бүрмөсөн салгана (RN Web)
+    if (!visible) return null;
+
     return (
         <Modal
-            visible={visible}
+            visible
             transparent
             animationType="fade"
         >
             <View style={styles.overlay}>
-                <View style={styles.modal}>
+                <View style={styles.content}>
                     {/* Ялагч зарлах */}
-                    <View style={styles.winnerSection}>
-                        <Text style={styles.trophy}>🏆</Text>
-                        <Text style={styles.winnerTitle}>ЯЛАГЧ</Text>
-                        <Text style={styles.winnerName}>{winner.name}</Text>
-                        <Text style={styles.winnerScore}>
-                            Оноо: {winner.finalScore}
-                        </Text>
+                    <View style={styles.banner}>
+                        <Text style={styles.bannerLabel}>ТОГЛООМ ДУУСЛАА</Text>
+                        <Text style={styles.bannerName}>{winner.name} яллаа</Text>
+                        <Text style={styles.bannerScore}>{winner.finalScore} оноо авав</Text>
                     </View>
 
-                    {/* Хүснэгт */}
-                    <View style={styles.tableSection}>
-                        <Text style={styles.tableTitle}>Эцсийн Үр Дүн</Text>
-                        
-                        {/* Header */}
-                        <View style={styles.tableHeader}>
-                            <Text style={[styles.headerCell, styles.rankCol]}>#</Text>
-                            <Text style={[styles.headerCell, styles.nameCol]}>Нэр</Text>
-                            <Text style={[styles.headerCell, styles.numCol]}>Цай</Text>
-                            <Text style={[styles.headerCell, styles.numCol]}>Авлага</Text>
-                            <Text style={[styles.headerCell, styles.numCol]}>Өглөг</Text>
-                            <Text style={[styles.headerCell, styles.numCol]}>Оноо</Text>
-                        </View>
-
-                        {/* Rows */}
+                    {/* Байрын жагсаалт */}
+                    <View style={[styles.table, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         <ScrollView style={styles.tableBody}>
                             {allScores.map((player, idx) => (
                                 <View
-                                    key={player.index}
+                                    key={player.index ?? idx}
                                     style={[
-                                        styles.tableRow,
+                                        styles.row,
                                         idx === 0 && styles.winnerRow
                                     ]}
                                 >
-                                    <Text style={[styles.cell, styles.rankCol]}>
-                                        {idx + 1}
-                                    </Text>
-                                    <Text style={[styles.cell, styles.nameCol]}>
-                                        {player.name}
-                                    </Text>
-                                    <Text style={[styles.cell, styles.numCol]}>
-                                        {player.tsai}
-                                    </Text>
-                                    <Text style={[styles.cell, styles.numCol]}>
-                                        {player.avlaga}
-                                    </Text>
-                                    <Text style={[styles.cell, styles.numCol]}>
-                                        {player.uglug}
-                                    </Text>
-                                    <Text style={[styles.cell, styles.numCol, styles.scoreCell]}>
+                                    <Text style={[styles.place, { color: colors.muted }]}>{idx + 1}</Text>
+                                    <Avatar
+                                        label={(player.name?.trim()?.[0] ?? "?").toUpperCase()}
+                                        color={AVATAR_COLORS[(player.index ?? idx) % 5]}
+                                        size={38}
+                                        radius={12}
+                                        fontSize={14}
+                                    />
+                                    <View style={styles.rowBody}>
+                                        <Text
+                                            style={[styles.rowName, { color: idx === 0 ? "#2B2D31" : colors.text }]}
+                                            numberOfLines={1}
+                                        >
+                                            {player.name}
+                                        </Text>
+                                        <Text
+                                            style={[styles.rowDetail, { color: idx === 0 ? PALETTE.gold : colors.muted }]}
+                                        >
+                                            {player.tsai} цай · {player.avlaga} авлага · {player.uglug} өглөг
+                                        </Text>
+                                    </View>
+                                    <Text
+                                        style={[
+                                            styles.rowScore,
+                                            { color: idx === 0 ? PALETTE.gold : colors.text }
+                                        ]}
+                                    >
                                         {player.finalScore}
                                     </Text>
                                 </View>
@@ -84,12 +88,23 @@ export default function GameEndModal({
                     </View>
 
                     {/* Товчнууд */}
-                    <View style={styles.buttonRow}>
-                        <Pressable style={styles.button} onPress={onRestart}>
-                            <Text style={styles.buttonText}>Дахин Тоглох</Text>
-                        </Pressable>
-                        <Pressable style={[styles.button, styles.exitButton]} onPress={onExit}>
-                            <Text style={[styles.buttonText, styles.exitText]}>Гарах</Text>
+                    <View style={styles.buttons}>
+                        <PushButton
+                            label="Дахин тоглох"
+                            color={colors.accent}
+                            shadowColor={colors.accentDark}
+                            onPress={onRestart}
+                            textStyle={{ fontSize: 17 }}
+                        />
+                        <Pressable
+                            onPress={onExit}
+                            style={({ pressed }) => [
+                                styles.exitBtn,
+                                { borderColor: "rgba(255,255,255,0.35)" },
+                                pressed && { transform: [{ translateY: 2 }] },
+                            ]}
+                        >
+                            <Text style={styles.exitText}>Үндсэн цэс</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -101,123 +116,95 @@ export default function GameEndModal({
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: "rgba(0,0,0,0.7)",
+        backgroundColor: "rgba(8,20,16,0.7)",
         justifyContent: "center",
-        alignItems: "center",
-        padding: 20,
+        padding: 18,
     },
-    modal: {
+    content: {
         width: "100%",
-        maxWidth: 500,
-        backgroundColor: "#fff",
-        borderRadius: 20,
-        padding: 24,
-        maxHeight: "80%",
+        maxWidth: 420,
+        alignSelf: "center",
+        gap: 14,
     },
-    winnerSection: {
+    banner: {
         alignItems: "center",
-        marginBottom: 24,
-        paddingBottom: 24,
-        borderBottomWidth: 2,
-        borderBottomColor: "#FFD700",
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        borderRadius: 22,
+        backgroundColor: PALETTE.goldSoft,
     },
-    trophy: {
-        fontSize: 60,
-        marginBottom: 8,
+    bannerLabel: {
+        fontSize: 11,
+        fontWeight: "700",
+        letterSpacing: 1.2,
+        color: PALETTE.gold,
     },
-    winnerTitle: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#666",
-        marginBottom: 8,
-    },
-    winnerName: {
-        fontSize: 32,
+    bannerName: {
+        fontSize: 28,
         fontWeight: "900",
-        color: "#FFD700",
-        marginBottom: 8,
-    },
-    winnerScore: {
-        fontSize: 18,
-        fontWeight: "700",
-        color: "#333",
-    },
-    tableSection: {
-        marginBottom: 24,
-    },
-    tableTitle: {
-        fontSize: 20,
-        fontWeight: "700",
-        marginBottom: 12,
+        color: "#2B2D31",
+        marginTop: 4,
         textAlign: "center",
     },
-    tableHeader: {
-        flexDirection: "row",
-        backgroundColor: "#f5f5f5",
-        paddingVertical: 8,
-        paddingHorizontal: 4,
-        borderRadius: 8,
-        marginBottom: 4,
-    },
-    headerCell: {
+    bannerScore: {
+        fontSize: 13,
         fontWeight: "700",
-        fontSize: 12,
-        color: "#333",
-        textAlign: "center",
+        color: PALETTE.gold,
+        marginTop: 2,
+    },
+    table: {
+        borderRadius: 22,
+        borderWidth: 2,
+        padding: 8,
     },
     tableBody: {
-        maxHeight: 200,
+        maxHeight: 330,
     },
-    tableRow: {
+    row: {
         flexDirection: "row",
-        paddingVertical: 8,
-        paddingHorizontal: 4,
-        borderBottomWidth: 1,
-        borderBottomColor: "#eee",
+        alignItems: "center",
+        gap: 12,
+        padding: 12,
+        borderRadius: 16,
     },
     winnerRow: {
-        backgroundColor: "#FFF9E6",
+        backgroundColor: PALETTE.goldSoft,
     },
-    cell: {
-        fontSize: 14,
-        color: "#333",
+    place: {
+        width: 22,
+        fontSize: 15,
+        fontFamily: MONO,
         textAlign: "center",
     },
-    rankCol: {
-        width: 30,
-    },
-    nameCol: {
+    rowBody: {
         flex: 1,
-        textAlign: "left",
-        paddingLeft: 8,
+        minWidth: 0,
     },
-    numCol: {
-        width: 50,
+    rowName: {
+        fontSize: 15,
+        fontWeight: "800",
     },
-    scoreCell: {
-        fontWeight: "700",
-        color: "#4CAF50",
+    rowDetail: {
+        fontSize: 11,
+        fontWeight: "600",
+        marginTop: 1,
     },
-    buttonRow: {
-        flexDirection: "row",
-        gap: 12,
+    rowScore: {
+        fontSize: 20,
+        fontFamily: MONO,
     },
-    button: {
-        flex: 1,
-        backgroundColor: "#4CAF50",
+    buttons: {
+        gap: 10,
+    },
+    exitBtn: {
         paddingVertical: 14,
-        borderRadius: 12,
+        borderRadius: 16,
+        borderWidth: 2,
         alignItems: "center",
     },
-    exitButton: {
-        backgroundColor: "#666",
-    },
-    buttonText: {
-        color: "#fff",
-        fontSize: 16,
-        fontWeight: "700",
-    },
     exitText: {
-        color: "#fff",
+        fontSize: 15,
+        fontWeight: "800",
+        color: "rgba(255,255,255,0.85)",
     },
 });

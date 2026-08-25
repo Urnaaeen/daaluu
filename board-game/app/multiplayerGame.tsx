@@ -1,955 +1,694 @@
-// app/multiplayerGame.tsx
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, FlatList } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
-import { useTheme } from '../context/ThemeContext';
-import { TopStatsBar } from '../components/aTopStatsBar';
-import PlayerScore from '../components/PlayerScore';
-
+import { Image as ExpoImage } from "expo-image";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import {
-    calculateWinner,
-    checkGameEnd,
-    executeTradingSystem,
-    type FinalScorePlayer,
-} from './trading';
-import GameEndModal from '../components/GameEndModal';
-
-import {
-    listenToRoom,
-    updateCenter,
-    updateCurrentPlayer,
-    updateHands,
-    addRoundMove,
-    resetRound,
-    updateAllScores,
-    setGameEnded,
-    updatePlayerScore,
-} from './utils/gameService';
-
-import { TILE_TYPES, type TileInstance } from './types';
-import { colorMatches } from './playScreen';
-import { selectBotMove } from './botlogic';
-
-export default function MultiplayerGameScreen() {
-    const router = useRouter();
-    const { colors } = useTheme();
-
-    const params = useLocalSearchParams();
-    const { roomCode, playerIndex } = params;
-
-    const [gameEnded, setGameEndedState] = useState(false);
-    const [finalScores, setFinalScores] = useState<{
-        winner: FinalScorePlayer;
-        allScores: FinalScorePlayer[];
-    } | null>(null);
-
-    const roomCodeStr = useMemo(() => {
-        const v = roomCode;
-        return Array.isArray(v) ? v[0] : v;
-    }, [roomCode]);
-
-    const playerIndexStr = useMemo(() => {
-        const v = playerIndex;
-        return Array.isArray(v) ? v[0] : v;
-    }, [playerIndex]);
-
-    const myIndex = useMemo(() => {
-        const n = Number(playerIndexStr);
-        return Number.isFinite(n) ? n : 0;
-    }, [playerIndexStr]);
-
-    const [roomData, setRoomData] = useState<any>(null);
-    const [selectedTileIds, setSelectedTileIds] = useState<string[]>([]);
-
-    const ROUND_SIZE = 5;
-
-    // ✅ listen
-    useEffect(() => {
-        if (!roomCodeStr) return;
-        const unsubscribe = listenToRoom(roomCodeStr, (data) => setRoomData(data));
-        return () => unsubscribe();
-    }, [roomCodeStr]);
-
-    const started = !!roomData?.gameState?.started;
-
-    const gameState = roomData?.gameState ?? {
-        hands: {},
-        center: [],
-        currentPlayerIndex: 0,
-        roundMoves: [],
-        gameEnded: false,
-    };
-
-    const players = roomData?.players ?? {};
-
-    const center: any[] = gameState.center ?? [];
-    const currentPlayerIndex: number = gameState.currentPlayerIndex ?? 0;
-    const firebaseGameEnded = !!gameState.gameEnded;
-
-    const myHand: TileInstance[] = useMemo(() => {
-        const hand = gameState.hands?.[myIndex] ?? [];
-
-        const handWithImages = hand.map((tile: any) => {
-            const tileType = TILE_TYPES.find(t => t.typeId === tile.typeId);
-            if (!tileType) return tile;
-
-            return {
-                ...tile,
-                image: tileType.image,  // ⬅️ Image нэмэх
-                title: tile.title || tileType.title,
-                color: tile.color || tileType.color
-            };
-        });
-
-        return [...hand].sort((a, b) => {
-            if (b.rank !== a.rank) return b.rank - a.rank;
-            return a.typeId.localeCompare(b.typeId);
-        });
-    }, [gameState.hands, myIndex]);
-
-    const me = players?.[myIndex] || {};
-    const isHost = !!me?.isHost;
-
-    // Firebase gameEnded sync (өөр тоглогч дуусгасан байж болно)
-    useEffect(() => {
-        if (!firebaseGameEnded) return;
-
-        if (!gameEnded) setGameEndedState(true);
-
-        if (!finalScores) {
-            const myScore = {
-                name: me.name ?? `Player ${myIndex}`,
-                stars: me.stars ?? 0,
-                tsai: me.tsai ?? 2,
-                avlaga: me.avlaga ?? 0,
-                uglug: me.uglug ?? 0,
-            };
-
-            const opps = Object.entries(players)
-                .filter(([idx]) => Number(idx) !== myIndex)
-                .map(([idx, p]: [string, any]) => ({
-                    name: p.name ?? `Player ${idx}`,
-                    stars: p.stars ?? 0,
-                    tsai: p.tsai ?? 2,
-                    avlaga: p.avlaga ?? 0,
-                    uglug: p.uglug ?? 0,
-                    id: `p${idx}`,
-                }));
-
-            const winnerData = calculateWinner(myScore as any, opps as any);
-            setFinalScores(winnerData);
-        }
-    }, [firebaseGameEnded, gameEnded, finalScores, players, myIndex, me]);
-
-    // ===== CENTER TILES PROCESS =====
-    const allCenterTiles: TileInstance[] = useMemo(() => {
-        const all: TileInstance[] = [];
-        for (const entry of center) {
-            if (Array.isArray(entry)) all.push(...entry);
-            else all.push(entry);
-        }
-        return all;
-    }, [center]);
-
-    const currentEntry = useMemo(() => {
-        return center.length > 0 ? center[center.length - 1] : null;
-    }, [center]);
-
-    const isLastEntryPair = Array.isArray(currentEntry);
-
-    const currentTiles: TileInstance[] = useMemo(() => {
-        if (center.length === 0) return [];
-
-        const firstEntry = center[0];
-        const referenceColor = Array.isArray(firstEntry) ? firstEntry[0].color : firstEntry.color;
-
-        const pairEntries = center.filter((entry: any) => Array.isArray(entry)) as TileInstance[][];
-
-        if (pairEntries.length > 0) {
-            const validPairs = pairEntries.filter((pair) => {
-                if (pair[0].typeId === 'nuuts') return false;
-                const pairColor = pair[0].color;
-                return !pairColor || !referenceColor || pairColor === referenceColor;
-            });
-
-            if (validPairs.length === 0) return [];
-
-            const highestValidPair = validPairs.reduce((maxPair, pair) => {
-                return pair[0].rank > maxPair[0].rank ? pair : maxPair;
-            });
-
-            return highestValidPair;
-        } else {
-            if (allCenterTiles.length === 0) return [];
-
-            const validTiles = allCenterTiles.filter((tile) => {
-                const tileColor = tile.color;
-                return !tileColor || !referenceColor || tileColor === referenceColor;
-            });
-
-            if (validTiles.length === 0) return [];
-
-            return [validTiles.reduce((max, tile) => (tile.rank > max.rank ? tile : max))];
-        }
-    }, [center, allCenterTiles]);
-
-    const lastTile = currentTiles.length > 0 ? currentTiles[0] : null;
-
-    const previousTiles: TileInstance[] = useMemo(() => {
-        const filtered = allCenterTiles.filter((tile) => !currentTiles.some((ct) => ct.id === tile.id));
-        const secretTiles = filtered.filter((t) => t.typeId === 'nuuts');
-        const nonSecretTiles = filtered.filter((t) => t.typeId !== 'nuuts');
-
-        const secretGroups = new Map<string, TileInstance>();
-        for (const tile of secretTiles) {
-            const baseId = tile.id.split('_').slice(0, 2).join('_');
-            if (!secretGroups.has(baseId)) secretGroups.set(baseId, tile);
-        }
-
-        const finalSecrets = Array.from(secretGroups.values());
-        return [...nonSecretTiles, ...finalSecrets].slice(-4);
-    }, [allCenterTiles, currentTiles]);
-
-    const opponents = useMemo(() => {
-        return Object.entries(players)
-            .filter(([index]) => Number(index) !== myIndex)
-            .map(([index, player]: [string, any]) => ({
-                id: `p${index}`,
-                name: player.name,
-                stars: player.stars || 0,
-                tsai: player.tsai || 2,
-                avlaga: player.avlaga || 0,
-                uglug: player.uglug || 0,
-            }));
-    }, [players, myIndex]);
-
-    const isMyTurn = currentPlayerIndex === myIndex;
-
-    // ===== START CHECK =====
-    const checkCanStartGame = (hand: TileInstance[]): boolean => {
-        if (!hand || hand.length === 0) return false;
-
-        const hasHighRank = hand.some((t) => t.rank >= 8);
-        if (hasHighRank) return true;
-
-        const pairCounts = new Map<string, number>();
-        hand.forEach((t) => pairCounts.set(t.typeId, (pairCounts.get(t.typeId) || 0) + 1));
-        const hasPair = Array.from(pairCounts.values()).some((count) => count >= 2);
-
-        return hasPair;
-    };
-
-    // ===== TRADING =====
-    const executeTrading = useCallback(async () => {
-        if (!roomCodeStr) return;
-
-        console.log('💰 Худалдаа эхлүүлж байна...');
-
-        const currentScores: any = {};
-        Object.entries(players).forEach(([index, player]: [string, any]) => {
-            currentScores[index] = {
-                stars: player.stars || 0,
-                tsai: player.tsai || 2,
-                avlaga: player.avlaga || 0,
-                uglug: player.uglug || 0,
-                name: player.name || `Player ${index}`,
-                id: `p${index}`,
-            };
-        });
-
-        const myScoreData = currentScores[String(myIndex)] || {
-            stars: 0,
-            tsai: 2,
-            avlaga: 0,
-            uglug: 0,
-            name: me?.name || `Player ${myIndex}`,
-            id: `p${myIndex}`,
-        };
-
-        const opponentsData = Object.entries(currentScores)
-            .filter(([index]) => Number(index) !== myIndex)
-            .map(([index, score]: [string, any]) => ({
-                id: `p${index}`,
-                name: score.name,
-                stars: score.stars,
-                tsai: score.tsai,
-                avlaga: score.avlaga,
-                uglug: score.uglug,
-            }));
-
-        const result = executeTradingSystem(myScoreData, opponentsData);
-
-        const newScores: any = {};
-        newScores[myIndex] = {
-            stars: result.myScore.stars,
-            tsai: result.myScore.tsai,
-            avlaga: result.myScore.avlaga,
-            uglug: result.myScore.uglug,
-        };
-
-        result.opponents.forEach((opp: any) => {
-            const idxStr = String(opp.id).replace('p', '');
-            const idxNum = Number(idxStr);
-            if (Number.isFinite(idxNum)) {
-                newScores[idxNum] = {
-                    stars: opp.stars,
-                    tsai: opp.tsai,
-                    avlaga: opp.avlaga,
-                    uglug: opp.uglug,
-                };
-            }
-        });
-
-        await updateAllScores(roomCodeStr, newScores);
-
-        setTimeout(async () => {
-            const endCheck = checkGameEnd(result.myScore, result.opponents);
-
-            if (endCheck.gameEnded) {
-                console.log('🏆 ТОГЛООМ ДУУСЛАА!');
-                const winnerData = calculateWinner(result.myScore, result.opponents);
-                setFinalScores(winnerData);
-                setGameEndedState(true);
-                await setGameEnded(roomCodeStr, true);
-            } else {
-                console.log('🔄 Шинэ round эхэллээ (stars reset)');
-
-                const resetScores: any = {};
-                Object.keys(newScores).forEach((idx) => {
-                    resetScores[Number(idx)] = {
-                        ...newScores[Number(idx)],
-                        stars: 0,
-                    };
-                });
-
-                await updateAllScores(roomCodeStr, resetScores);
-            }
-        }, 2000);
-    }, [roomCodeStr, players, myIndex, me]);
-
-    // ===== ROUND SCORE CALC =====
-    const calculateRoundScore = useCallback(
-        async (currentHands: any, roundMovesParam?: any[]) => {
-            if (!roomCodeStr) return;
-            if (firebaseGameEnded) return;
-
-            const roundMoves = roundMovesParam ?? gameState.roundMoves ?? [];
-
-            console.log('💰 calculateRoundScore() дуудагдлаа | roundMoves:', roundMoves.length);
-
-            if (!roundMoves || roundMoves.length < ROUND_SIZE) {
-                console.log(`⏳ RoundMoves ${roundMoves?.length || 0}/${ROUND_SIZE} - дутуу байна`);
-                return;
-            }
-
-            const referenceColor = currentTiles.length > 0 ? currentTiles[0].color : null;
-            console.log(`🎲 Өнгө: ${referenceColor || 'хоосон'}`);
-
-            let maxRank = -999;
-            let winnerIndex = -1;
-
-            for (const move of roundMoves) {
-                const tiles: TileInstance[] = move.tiles || [];
-                if (!tiles || tiles.length === 0) continue;
-
-                const isActualPair = tiles.length === 2 && tiles[0].typeId === tiles[1].typeId;
-                const isSecret = tiles.length === 2 && !isActualPair;
-
-                let tileRank: number;
-                let tileColor: string | undefined;
-
-                if (isSecret) {
-                    tileRank = 1;
-                    tileColor = undefined;
-                } else {
-                    tileRank = tiles[0].rank;
-                    tileColor = tiles[0].color;
-                }
-
-                let isValid = true;
-                if (!isSecret && referenceColor) {
-                    if (!colorMatches(tileColor, referenceColor)) {
-                        isValid = false;
-                        console.log(`❌ Тоглогч ${move.playerIndex}: Өнгө таарахгүй`);
-                    }
-                }
-
-                if (isValid && tileRank > maxRank) {
-                    maxRank = tileRank;
-                    winnerIndex = move.playerIndex;
-                }
-            }
-
-            if (winnerIndex === -1) {
-                console.log('❌ Валид мод байхгүй!');
-                return;
-            }
-
-            const winnerMove = roundMoves.find((m: any) => m.playerIndex === winnerIndex);
-            const isPairRound =
-                winnerMove &&
-                winnerMove.tiles &&
-                winnerMove.tiles.length === 2 &&
-                winnerMove.tiles[0].typeId === winnerMove.tiles[1].typeId;
-
-            const scoreToAdd = isPairRound ? 2 : 1;
-
-            console.log(`🏆 Ялагч: ${winnerIndex} | Rank: ${maxRank} | Оноо: ${scoreToAdd}`);
-
-            const currentStars = players?.[winnerIndex]?.stars || 0;
-            await updatePlayerScore(roomCodeStr, winnerIndex, 'stars', currentStars + scoreToAdd);
-
-            // 2 сек дараа: reset + startPlayer шалгах / trade
-            setTimeout(async () => {
-                await resetRound(roomCodeStr);
-
-                // 🔥 ЭХЛЭЭД гар дуусаагүй эсэхийг шалгах
-                const allHandsEmpty = Object.values(currentHands || {}).every(
-                    (hand: any) => !hand || hand.length === 0
-                );
-
-                if (allHandsEmpty) {
-                    // ✅ Бүх гар дууссан → ХУДАЛДАА дуудах
-                    console.log('🎯 Бүх тоглогчийн гар дууслаа! Худалдаа эхлүүлж байна...');
-                    await executeTrading();
-                    return; // ⬅️ Худалдаа дуудсан бол дуусгах
-                }
-
-                // ❌ Гар дуусаагүй → StartPlayer шалгаад үргэлжлүүлэх
-                console.log('🔄 Гар дуусаагүй, дараагийн тоглогч эхлүүлэх...');
-
-                let startPlayer = winnerIndex;
-                let attempts = 0;
-                let canAnyoneStart = false;
-
-                const playerCount = Object.keys(players).length || ROUND_SIZE;
-
-                while (attempts < playerCount) {
-                    const hand = currentHands?.[startPlayer] || [];
-                    const canStart = checkCanStartGame(hand);
-
-                    if (canStart) {
-                        console.log(`✅ Тоглогч ${startPlayer} эхлэх эрхтэй`);
-                        canAnyoneStart = true;
-                        await updateCurrentPlayer(roomCodeStr, startPlayer);
-                        break;
-                    }
-
-                    startPlayer = (startPlayer + 1) % playerCount;
-                    attempts++;
-                }
-
-                if (!canAnyoneStart) {
-                    console.log('⚠️ Хэн ч эхлэх эрхгүй! Худалдаа эхлүүлж байна...');
-                    await executeTrading();
-                }
-            }, 2000);
-        },
-        [
-            roomCodeStr,
-            firebaseGameEnded,
-            gameState.roundMoves,
-            currentTiles,
-            players,
-            executeTrading,
-        ]
-    );
-
-    // ✅ RoundMoves 5 болсон мөчийг listener-ээр trigger хийх (HOST only)
-    const scoringRef = useRef(false);
-
-    useEffect(() => {
-        if (!started) return;
-        if (firebaseGameEnded) return;
-
-        const roundMoves = gameState.roundMoves || [];
-        const len = roundMoves.length;
-
-        // reset болсон үед дахин зөвшөөрөх
-        if (len === 0) scoringRef.current = false;
-
-        // зөвхөн host тооцоолно (давхардахгүй)
-        if (!isHost) return;
-
-        if (len === ROUND_SIZE && !scoringRef.current) {
-            scoringRef.current = true;
-            console.log('✅ RoundMoves 5 боллоо! Оноо тооцож байна (HOST trigger)...');
-
-            // хамгийн шинэ hands + roundMoves
-            calculateRoundScore(gameState.hands, roundMoves);
-        }
-    }, [
-        started,
-        firebaseGameEnded,
-        isHost,
-        gameState.roundMoves,
-        gameState.hands,
-        calculateRoundScore,
-    ]);
-
-    // ===== БОТ helper =====
-    const calculateHasHigherPair = useCallback(
-        (botHand: TileInstance[]) => {
-            if (!lastTile || !isLastEntryPair) return false;
-
-            const pairCounts = new Map<string, number>();
-            for (const tile of botHand) {
-                pairCounts.set(tile.typeId, (pairCounts.get(tile.typeId) || 0) + 1);
-            }
-
-            for (const tile of botHand) {
-                if (
-                    (pairCounts.get(tile.typeId) || 0) >= 2 &&
-                    colorMatches(tile.color, lastTile.color) &&
-                    tile.rank > lastTile.rank
-                ) {
-                    return true;
-                }
-            }
-            return false;
-        },
-        [lastTile, isLastEntryPair]
-    );
-
-    const calculateHasLowerPair = useCallback(
-        (botHand: TileInstance[]) => {
-            if (!lastTile || !isLastEntryPair) return false;
-
-            const pairCounts = new Map<string, number>();
-            for (const tile of botHand) {
-                pairCounts.set(tile.typeId, (pairCounts.get(tile.typeId) || 0) + 1);
-            }
-
-            for (const tile of botHand) {
-                if (
-                    (pairCounts.get(tile.typeId) || 0) >= 2 &&
-                    colorMatches(tile.color, lastTile.color) &&
-                    tile.rank < lastTile.rank
-                ) {
-                    return true;
-                }
-            }
-            return false;
-        },
-        [lastTile, isLastEntryPair]
-    );
-
-    // ===== BOT MOVE =====
-    const playBotMove = useCallback(
-        async (botIndex: number) => {
-            if (!roomCodeStr) return;
-            if (firebaseGameEnded) return;
-
-            const botHand: TileInstance[] = gameState.hands?.[botIndex] || [];
-
-            // ✅ энэ round-д бот тоглосон эсэх
-            const roundMoves = gameState.roundMoves || [];
-            const alreadyPlayed = roundMoves.some((m: any) => m.playerIndex === botIndex);
-            if (alreadyPlayed) return;
-
-            const selectedTiles: TileInstance[] = selectBotMove(
-                botHand,
-                center,
-                currentTiles,
-                isLastEntryPair,
-                lastTile,
-                calculateHasHigherPair(botHand),
-                calculateHasLowerPair(botHand)
-            );
-
-            if (!selectedTiles || selectedTiles.length === 0) return;
-
-            const newCenter = [...center];
-
-            if (selectedTiles.length === 2) {
-                const isPair = selectedTiles[0].typeId === selectedTiles[1].typeId;
-
-                if (isPair) {
-                    if (isLastEntryPair) {
-                        const lastPair = currentEntry as TileInstance[];
-                        const newPair = selectedTiles;
-
-                        if (newPair[0].rank > lastPair[0].rank) {
-                            const updatedCenter = newCenter.slice(0, -1);
-                            updatedCenter.push(lastPair[0]);
-                            updatedCenter.push(newPair);
-                            await updateCenter(roomCodeStr, updatedCenter);
-                        } else {
-                            newCenter.push([newPair[0]]);
-                            await updateCenter(roomCodeStr, newCenter);
-                        }
-                    } else {
-                        newCenter.push(selectedTiles);
-                        await updateCenter(roomCodeStr, newCenter);
-                    }
-                } else {
-                    const secretTile = TILE_TYPES.find((t) => t.typeId === 'nuuts');
-                    if (secretTile) {
-                        const timestamp = Date.now();
-                        newCenter.push([
-                            { ...secretTile, id: `nuuts_${timestamp}`, copyIndex: 1 },
-                            { ...secretTile, id: `nuuts_${timestamp}_2`, copyIndex: 2 },
-                        ]);
-                        await updateCenter(roomCodeStr, newCenter);
-                    }
-                }
-            } else if (selectedTiles.length === 1) {
-                newCenter.push(selectedTiles[0]);
-                await updateCenter(roomCodeStr, newCenter);
-            } else {
-                return;
-            }
-
-            // HANDS update
-            const selectedIds = selectedTiles.map((t) => t.id);
-            const newHands = { ...gameState.hands };
-            newHands[botIndex] = botHand.filter((t) => !selectedIds.includes(t.id));
-            await updateHands(roomCodeStr, newHands);
-
-            // ROUND MOVE хадгалах
-            const moveCount = await addRoundMove(roomCodeStr, botIndex, selectedTiles);
-
-            // ✅ Round дууссан бол эндээс зогсоно (оноог HOST trigger тооцно)
-            if (moveCount >= ROUND_SIZE) {
-                console.log('✅ Round дууслаа (бот) — score trigger listener ажиллана');
-                return;
-            }
-
-            // Next player
-            const playerCount = Object.keys(players).length || 1;
-            const nextPlayer = (currentPlayerIndex + 1) % playerCount;
-            await updateCurrentPlayer(roomCodeStr, nextPlayer);
-        },
-        [
-            roomCodeStr,
-            firebaseGameEnded,
-            gameState.hands,
-            gameState.roundMoves,
-            center,
-            currentTiles,
-            isLastEntryPair,
-            lastTile,
-            calculateHasHigherPair,
-            calculateHasLowerPair,
-            currentEntry,
-            players,
-            currentPlayerIndex,
-        ]
-    );
-
-    // BOT useEffect
-    useEffect(() => {
-        if (!started) return;
-        if (firebaseGameEnded) return;
-        if (currentPlayerIndex === myIndex) return;
-
-        const currentPlayer = players[currentPlayerIndex];
-        if (!currentPlayer?.isBot) return;
-
-        const timer = setTimeout(() => {
-            playBotMove(currentPlayerIndex);
-        }, 1200);
-
-        return () => clearTimeout(timer);
-    }, [started, firebaseGameEnded, currentPlayerIndex, myIndex, players, playBotMove]);
-
-    // ===== HUMAN MOVE =====
-    const handlePlayTile = useCallback(async () => {
-        if (!roomCodeStr) return;
-        if (firebaseGameEnded) return;
-        if (selectedTileIds.length === 0) return;
-
-        const tilesToPlay = myHand.filter((t) => selectedTileIds.includes(t.id));
-        if (tilesToPlay.length === 0) return;
-
-        const newCenter = [...center];
-
-        if (tilesToPlay.length === 2) {
-            const isPair = tilesToPlay[0].typeId === tilesToPlay[1].typeId;
-
-            if (isPair) {
-                if (isLastEntryPair) {
-                    const lastPair = currentEntry as TileInstance[];
-                    const newPair = tilesToPlay;
-
-                    if (newPair[0].rank > lastPair[0].rank) {
-                        const updatedCenter = newCenter.slice(0, -1);
-                        updatedCenter.push(lastPair[0]);
-                        updatedCenter.push(newPair);
-                        await updateCenter(roomCodeStr, updatedCenter);
-                    } else {
-                        newCenter.push([newPair[0]]);
-                        await updateCenter(roomCodeStr, newCenter);
-                    }
-                } else {
-                    newCenter.push(tilesToPlay);
-                    await updateCenter(roomCodeStr, newCenter);
-                }
-            } else {
-                const secretTile = TILE_TYPES.find((t) => t.typeId === 'nuuts');
-                if (!secretTile) return;
-
-                const timestamp = Date.now();
-                newCenter.push([
-                    { ...secretTile, id: `nuuts_${timestamp}`, copyIndex: 1 },
-                    { ...secretTile, id: `nuuts_${timestamp}_2`, copyIndex: 2 },
-                ]);
-                await updateCenter(roomCodeStr, newCenter);
-            }
-        } else if (tilesToPlay.length === 1) {
-            newCenter.push(tilesToPlay[0]);
-            await updateCenter(roomCodeStr, newCenter);
-        } else {
-            return;
-        }
-
-        // HANDS update
-        const newHands = { ...gameState.hands };
-        newHands[myIndex] = myHand.filter((t) => !selectedTileIds.includes(t.id));
-        await updateHands(roomCodeStr, newHands);
-
-        // ROUND MOVE хадгалах
-        const moveCount = await addRoundMove(roomCodeStr, myIndex, tilesToPlay);
-
-        // ✅ Round дууссан бол ээлж солихгүй (оноог HOST trigger тооцно)
-        if (moveCount >= ROUND_SIZE) {
-            console.log('✅ Round дууслаа (human) — score trigger listener ажиллана');
-            setSelectedTileIds([]);
-            return;
-        }
-
-        // Next player
-        const playerCount = Object.keys(players).length || 1;
-        const nextPlayer = (currentPlayerIndex + 1) % playerCount;
-        await updateCurrentPlayer(roomCodeStr, nextPlayer);
-
-        setSelectedTileIds([]);
-    }, [
-        roomCodeStr,
-        firebaseGameEnded,
-        selectedTileIds,
-        myHand,
-        center,
-        isLastEntryPair,
-        currentEntry,
-        gameState.hands,
-        myIndex,
-        players,
-        currentPlayerIndex,
-    ]);
-
-    if (!started) {
-        return (
-            <View style={[styles.container, { backgroundColor: colors.background }]}>
-                <Text style={{ color: colors.text, fontSize: 18 }}>Тоглоом эхлүүлж байна...</Text>
-            </View>
-        );
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import ExitConfirmModal from "../components/ExitConfirmModal";
+import FeltBackdrop from "../components/FeltBackdrop";
+import GameSeat from "../components/GameSeat";
+import PauseModal from "../components/PauseModal";
+import PeekModal from "../components/PeekModal";
+import PushButton from "../components/ui/PushButton";
+import { useTheme } from "../context/ThemeContext";
+import { api, ApiError } from "../lib/api";
+import { endRuleShort } from "../lib/endRules";
+import { canSelectTile, currentLead, validateMove } from "../lib/rules";
+import { subscribeToMatch, type MatchState } from "../lib/socket";
+import { sortHand, tileViews } from "../lib/tiles";
+import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
+
+export default function MultiplayerGame() {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const params = useLocalSearchParams();
+  const matchId = typeof params.matchId === "string" ? params.matchId : null;
+
+  const [state, setState] = useState<MatchState | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [peekSeat, setPeekSeat] = useState(-1);
+  const [showExit, setShowExit] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  // Realtime төлөв.
+  // Бусад тоглогч мод гаргахад сонголтыг УСТГАХГҮЙ — зөвхөн гарт байхгүй
+  // болсон модыг л хасна (миний хөдөлгөөн батлагдсан гэсэн үг).
+  useEffect(() => {
+    if (!matchId) return;
+    return subscribeToMatch(matchId, (next) => {
+      setState(next);
+      setSelected((prev) => {
+        const inHand = new Set(next.myHand);
+        const kept = prev.filter((id) => inHand.has(id));
+        return kept.length === prev.length ? prev : kept;
+      });
+    });
+  }, [matchId]);
+
+  // Ээлжийн үлдсэн хугацааг тоолно
+  useEffect(() => {
+    const deadline = state?.match.turnDeadline;
+    if (!deadline) {
+      setSecondsLeft(null);
+      return;
     }
+    const tick = () => {
+      const left = Math.max(0, Math.round((new Date(deadline).getTime() - Date.now()) / 1000));
+      setSecondsLeft(left);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [state?.match.turnDeadline]);
 
-    return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <TopStatsBar
-                avlaga={me.avlaga || 0}
-                uglug={me.uglug || 0}
-                tsai={me.tsai || 2}
-                tsaiTotal={10}
-                ger={me.stars || 0}
-            />
+  // Тоглоом дуусахад дүнгийн дэлгэц рүү
+  useEffect(() => {
+    if (state?.match.status !== "finished") return;
 
-            <View style={styles.gameArea}>
-                <View style={styles.centerWrap}>
-                    <View style={[styles.centerBoard, { backgroundColor: colors.card }]}>
-                        {previousTiles.length > 0 && (
-                            <View style={styles.previousTilesRow}>
-                                {previousTiles.map((tile, idx) => (
-                                    <View key={`${tile.id}_${idx}`} style={styles.previousTileItem}>
-                                        <ExpoImage
-                                            source={tile.image}
-                                            style={styles.previousTileImage}
-                                            contentFit="contain"
-                                            cachePolicy="memory-disk"
-                                        />
-                                    </View>
-                                ))}
-                            </View>
-                        )}
+    const rows = [...state.players]
+      .sort((a, b) => (a.place ?? 9) - (b.place ?? 9))
+      .map((p) => ({
+        place: String(p.place ?? ""),
+        name: p.name,
+        detail: `${p.tsai} цай · ${p.avlaga} авлага · ${p.uglug} өглөг`,
+        score: String(p.finalScore ?? 0),
+        seat: p.seat,
+      }));
 
-                        {currentTiles.length > 0 ? (
-                            <View style={styles.currentTilesWrap}>
-                                {currentTiles.map((tile, idx) => (
-                                    <View
-                                        key={tile.id}
-                                        style={[
-                                            styles.centerTileContainer,
-                                            currentTiles.length === 2 && idx === 1 && styles.centerTileOverlap,
-                                        ]}
-                                    >
-                                        <ExpoImage
-                                            source={tile.image}
-                                            style={styles.centerTile}
-                                            contentFit="contain"
-                                            priority="high"
-                                            cachePolicy="memory-disk"
-                                        />
-                                    </View>
-                                ))}
-                            </View>
-                        ) : (
-                            <Text style={[styles.emptyText, { color: colors.text }]}>
-                                {isMyTurn ? '🎯 Таны ээлж!' : 'Гол хоосон'}
-                            </Text>
-                        )}
-                    </View>
-                </View>
+    const winner = rows[0];
+    router.replace({
+      pathname: "/end",
+      params: {
+        scores: JSON.stringify(rows),
+        winner: winner?.name ?? "",
+        summary: `${winner?.score ?? 0} оноогоор түрүүллээ`,
+      },
+    });
+  }, [state?.match.status, state?.players, router]);
 
-                <View style={styles.actionRow}>
-                    <Pressable
-                        style={[
-                            styles.actionBtn,
-                            { backgroundColor: isMyTurn && selectedTileIds.length > 0 && !firebaseGameEnded ? '#4CAF50' : '#ccc' },
-                        ]}
-                        onPress={handlePlayTile}
-                        disabled={!isMyTurn || selectedTileIds.length === 0 || firebaseGameEnded}
-                    >
-                        <Text style={styles.actionText}>Гарах ({selectedTileIds.length})</Text>
-                    </Pressable>
+  const myHand = useMemo(() => sortHand(state?.myHand ?? []), [state?.myHand]);
 
-                    {selectedTileIds.length > 0 && !firebaseGameEnded && (
-                        <Pressable style={styles.clearBtn} onPress={() => setSelectedTileIds([])}>
-                            <Text style={styles.clearBtnText}>✕</Text>
-                        </Pressable>
-                    )}
-                </View>
+  // Голд байгаа хамгийн том мод
+  const biggest = useMemo(() => {
+    const moves = state?.moves ?? [];
+    if (!moves.length) return null;
 
-                <View style={styles.handWrap}>
-                    <FlatList
-                        horizontal
-                        data={myHand}
-                        keyExtractor={(t: TileInstance) => t.id}
-                        renderItem={({ item }) => {
-                            const isSelected = selectedTileIds.includes(item.id);
+    const real = moves.filter((m) => !m.isSecret).map((m) => ({ ...m, view: tileViews(m.tiles) }));
+    if (!real.length) return null;
 
-                            return (
-                                <Pressable
-                                    style={[
-                                        styles.handItem,
-                                        isSelected && styles.handItemSelected,
-                                        (!isMyTurn || firebaseGameEnded) && styles.handItemDisabled,
-                                    ]}
-                                    onPress={() => {
-                                        if (!isMyTurn || firebaseGameEnded) return;
+    const refColor = real[0].view[0]?.color;
+    const valid = real.filter((m) => {
+      const c = m.view[0]?.color;
+      return !c || !refColor || c === refColor;
+    });
 
-                                        if (isSelected) {
-                                            setSelectedTileIds(selectedTileIds.filter((id) => id !== item.id));
-                                        } else {
-                                            setSelectedTileIds([...selectedTileIds, item.id]);
-                                        }
-                                    }}
-                                    disabled={!isMyTurn || firebaseGameEnded}
-                                >
-                                    <ExpoImage
-                                        source={item.image}
-                                        style={styles.handTile}
-                                        contentFit="contain"
-                                        cachePolicy="memory-disk"
-                                    />
-                                    <Text style={[styles.handLabel, { color: colors.text }]}>{item.title}</Text>
-                                </Pressable>
-                            );
-                        }}
-                    />
-                </View>
+    const pool = valid.length ? valid : real;
+    return pool.reduce((best, m) => (m.view[0].rank > best.view[0].rank ? m : best));
+  }, [state?.moves]);
 
-                <View style={styles.playersOverlay}>
-                    <PlayerScore
-                        opponents={opponents}
-                        showOpponentScores={true}
-                        currentPlayerIndex={currentPlayerIndex}
-                        timeLeft={0}
-                    />
-                </View>
-            </View>
+  const play = async () => {
+    if (!matchId || !selected.length) return;
+    setSending(true);
+    setError("");
+    try {
+      await api(`/matches/${matchId}/play`, { method: "POST", body: { tiles: selected } });
+      setSelected([]);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Мод гаргаж чадсангүй.");
+    } finally {
+      setSending(false);
+    }
+  };
 
-            {finalScores && (
-                <GameEndModal
-                    visible={gameEnded}
-                    winner={finalScores.winner}
-                    allScores={finalScores.allScores}
-                    onRestart={async () => {
-                        if (!roomCodeStr) return;
-
-                        setGameEndedState(false);
-                        setFinalScores(null);
-
-                        await setGameEnded(roomCodeStr, false);
-                        await resetRound(roomCodeStr);
-
-                        const resetScores: any = {};
-                        Object.entries(players).forEach(([idx, p]: [string, any]) => {
-                            resetScores[Number(idx)] = {
-                                stars: 0,
-                                tsai: p.tsai || 2,
-                                avlaga: p.avlaga || 0,
-                                uglug: p.uglug || 0,
-                            };
-                        });
-                        await updateAllScores(roomCodeStr, resetScores);
-
-                        await updateCurrentPlayer(roomCodeStr, 0);
-                    }}
-                    onExit={() => {
-                        setGameEndedState(false);
-                        setFinalScores(null);
-                        router.push('/');
-                    }}
-                />
-            )}
-        </View>
+  const toggle = (id: string) => {
+    setError("");
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < 2 ? [...prev, id] : prev
     );
+  };
+
+  // Голд байгаа хамгийн том — дүрмийн шалгалтад ашиглана
+  const lead = useMemo(() => currentLead(state?.moves ?? []), [state?.moves]);
+
+  // Аль модыг сонгож болохыг урьдчилан тооцно (сервер эцсийн шүүлтийг хийнэ)
+  const selectable = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const t of myHand) map.set(t.id, canSelectTile(myHand, selected, t.id, lead));
+    return map;
+  }, [myHand, selected, lead]);
+
+  // Сонголт хүчинтэй юу — үгүй бол шалтгааныг товчны дээр харуулна
+  const selectionProblem = useMemo(
+    () => (selected.length ? validateMove(myHand, selected, lead) : null),
+    [myHand, selected, lead]
+  );
+
+  if (!state || !matchId) {
+    return (
+      <View style={[styles.loadingWrap, { backgroundColor: colors.feltTop }]}>
+        <ActivityIndicator size="large" color={PALETTE.yellow} />
+        <Text style={styles.loadingText}>Ширээ бэлдэж байна…</Text>
+      </View>
+    );
+  }
+
+  const me = state.players.find((p) => p.isMe);
+  const mySeat = state.mySeat ?? 0;
+  const myTurn = state.match.currentSeat === mySeat && state.match.status === "playing";
+  const lowTime = myTurn && secondsLeft !== null && secondsLeft <= 5;
+  const canPlay = myTurn && selected.length > 0 && !selectionProblem && !sending;
+
+  // Бусад суудлыг минийхээс цагийн зүүний дагуу
+  const others = state.players
+    .filter((p) => p.seat !== mySeat)
+    .sort((a, b) => a.seat - b.seat);
+  const ordered = [
+    ...others.filter((p) => p.seat > mySeat),
+    ...others.filter((p) => p.seat < mySeat),
+  ];
+
+  const movesBySeat = new Map(state.moves.map((m) => [m.seat, m]));
+
+  const seatFor = (player: (typeof state.players)[number] | undefined) => {
+    if (!player) return <View style={{ width: 86 }} />;
+    const move = movesBySeat.get(player.seat);
+    return (
+      <GameSeat
+        name={player.name}
+        color={AVATAR_COLORS[player.seat % 5]}
+        isTurn={state.match.currentSeat === player.seat && state.match.status === "playing"}
+        timeLeft={secondsLeft}
+        ger={player.ger}
+        tiles={move ? tileViews(move.tiles) : null}
+        isBiggest={biggest?.seat === player.seat}
+        onLongPress={() => setPeekSeat(player.seat)}
+      />
+    );
+  };
+
+  const turnName = state.players.find((p) => p.seat === state.match.currentSeat)?.name ?? "";
+  const turnLabel = myTurn
+    ? secondsLeft === null
+      ? "Таны ээлж"
+      : `Таны ээлж · ${secondsLeft} сек`
+    : `${turnName} бодож байна…`;
+
+  const peekPlayer = state.players.find((p) => p.seat === peekSeat);
+
+  return (
+    <View style={[styles.safe, { backgroundColor: colors.feltTop }]}>
+      <FeltBackdrop />
+
+      {/* TOP BAR */}
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => setPaused(true)}
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressedDown]}
+        >
+          <Text style={styles.iconBtnText}>❙❙</Text>
+        </Pressable>
+
+        <View style={styles.turnPillWrap}>
+          <View
+            style={[
+              styles.turnPill,
+              {
+                backgroundColor: myTurn
+                  ? lowTime
+                    ? PALETTE.red
+                    : PALETTE.yellow
+                  : "rgba(255,255,255,0.14)",
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.turnPillText,
+                {
+                  color: myTurn
+                    ? lowTime
+                      ? "#fff"
+                      : PALETTE.yellowText
+                    : "rgba(255,255,255,0.85)",
+                },
+              ]}
+            >
+              {turnLabel}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.roundPill}>
+          <Text style={styles.roundText}>{state.match.roundNo}</Text>
+        </View>
+      </View>
+
+      {/* ДЭЭД СУУДЛУУД */}
+      <View style={styles.topSeats}>
+        {seatFor(ordered[1])}
+        {seatFor(ordered[2])}
+      </View>
+
+      {/* ЗҮҮН · ГОЛ · БАРУУН */}
+      <View style={styles.middleRow}>
+        {seatFor(ordered[0])}
+
+        <View style={styles.centerArea}>
+          {biggest ? (
+            <>
+              <Text style={styles.centerLabel}>ХАМГИЙН ТОМ</Text>
+              <View style={styles.centerTilesRow}>
+                {biggest.view.map((t, i) => (
+                  <ExpoImage
+                    key={t.id}
+                    source={t.image}
+                    style={[styles.centerTile, i === 1 && styles.centerTileOverlap]}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                  />
+                ))}
+              </View>
+              <View style={styles.centerOwnerPill}>
+                <Text style={styles.centerOwnerText}>
+                  {state.players.find((p) => p.seat === biggest.seat)?.name} · {biggest.view[0].title}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.centerEmpty}>
+              <Text style={styles.centerEmptyText}>
+                Гол хоосон{"\n"}8-аас дээш мод эсвэл хосоор эхэл
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {seatFor(ordered[3])}
+      </View>
+
+      {/* МИНИЙ ГАРГАСАН МОД */}
+      <View style={styles.mySlotRow}>
+        {movesBySeat.has(mySeat) ? (
+          <View style={styles.myPlayedRow}>
+            {tileViews(movesBySeat.get(mySeat)!.tiles).map((t, i) => (
+              <ExpoImage
+                key={t.id}
+                source={t.image}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                style={[
+                  styles.myPlayedTile,
+                  i === 1 && styles.myPlayedTileSecond,
+                  biggest?.seat === mySeat && styles.myPlayedTileWin,
+                ]}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.mySlotEmpty}>
+            <Text style={styles.mySlotEmptyText}>Чи</Text>
+          </View>
+        )}
+      </View>
+
+      {/* МИНИЙ МӨР */}
+      <View style={styles.myRow}>
+        <View
+          style={[
+            styles.myRing,
+            { backgroundColor: myTurn ? (lowTime ? PALETTE.red : PALETTE.yellow) : "rgba(255,255,255,0.10)" },
+          ]}
+        >
+          <Pressable onLongPress={() => setPeekSeat(mySeat)} delayLongPress={380}>
+            <View style={[styles.myAvatar, { backgroundColor: AVATAR_COLORS[mySeat % 5] }]}>
+              <Text style={styles.myAvatarText}>
+                {(me?.name.trim()[0] ?? "Ч").toUpperCase()}
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+
+        <View style={styles.chipsRow}>
+          <View style={styles.chip}>
+            <Text style={styles.chipLabel}>ЦАЙ</Text>
+            <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>{me?.tsai ?? 0}</Text>
+          </View>
+          <View style={styles.chip}>
+            <Text style={styles.chipLabel}>АВЛАГА</Text>
+            <Text style={[styles.chipValue, { color: PALETTE.green }]}>{me?.avlaga ?? 0}</Text>
+          </View>
+          <View style={styles.chip}>
+            <Text style={styles.chipLabel}>ӨГЛӨГ</Text>
+            <Text style={[styles.chipValue, { color: PALETTE.orange }]}>{me?.uglug ?? 0}</Text>
+          </View>
+        </View>
+
+        <View style={styles.gerChip}>
+          <Text style={styles.chipLabel}>ГЭР</Text>
+          <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>🏠 {me?.ger ?? 0}</Text>
+        </View>
+      </View>
+
+      {/* ЗӨВЛӨМЖ / АЛДАА — сонголт дүрэмд нийцээгүй бол шалтгааныг харуулна */}
+      {(!!error || !!selectionProblem) && (
+        <View style={styles.errorRow}>
+          <Text style={styles.errorText}>{error || selectionProblem}</Text>
+        </View>
+      )}
+
+      {/* ҮЙЛДЭЛ */}
+      <View style={styles.actionRow}>
+        <PushButton
+          label={sending ? "Илгээж байна…" : selected.length ? `Мод гаргах (${selected.length})` : "Мод гаргах"}
+          color={canPlay ? PALETTE.green : "rgba(255,255,255,0.10)"}
+          shadowColor={canPlay ? PALETTE.greenDark : "transparent"}
+          textColor={canPlay ? "#fff" : "rgba(255,255,255,0.45)"}
+          disabled={!canPlay}
+          onPress={play}
+          radius={15}
+          style={{ flex: 1 }}
+          faceStyle={{ paddingVertical: 14 }}
+          textStyle={{ fontSize: 16 }}
+        />
+
+        {selected.length > 0 && (
+          <PushButton
+            label="✕"
+            color={PALETTE.red}
+            shadowColor={PALETTE.redDark}
+            onPress={() => setSelected([])}
+            radius={15}
+            faceStyle={{ width: 48, paddingVertical: 14, paddingHorizontal: 0 }}
+            textStyle={{ fontSize: 16 }}
+          />
+        )}
+      </View>
+
+      {/* МИНИЙ ГАР */}
+      <View style={styles.handWrap}>
+        <FlatList
+          horizontal
+          data={myHand}
+          keyExtractor={(t) => t.id}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 14, gap: 9 }}
+          renderItem={({ item }) => {
+            const isSelected = selected.includes(item.id);
+            // Ээлж биш эсвэл дүрмээр гаргах боломжгүй бол бүдгэрнэ
+            const usable = myTurn && (selectable.get(item.id) ?? false);
+            return (
+              <Pressable
+                style={[
+                  styles.handItem,
+                  isSelected && styles.handItemSelected,
+                  !isSelected && !usable && styles.handItemDim,
+                ]}
+                onPress={() => toggle(item.id)}
+                disabled={!usable}
+              >
+                <ExpoImage
+                  source={item.image}
+                  style={styles.handTile}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+                <Text style={styles.handLabel} numberOfLines={1}>
+                  {item.title}
+                </Text>
+              </Pressable>
+            );
+          }}
+        />
+      </View>
+
+      {/* MODALS */}
+      {peekPlayer && (
+        <PeekModal
+          visible={peekSeat >= 0}
+          onClose={() => setPeekSeat(-1)}
+          name={peekPlayer.name}
+          color={AVATAR_COLORS[peekPlayer.seat % 5]}
+          stats={{
+            tsai: peekPlayer.tsai,
+            ger: peekPlayer.ger,
+            avlaga: peekPlayer.avlaga,
+            uglug: peekPlayer.uglug,
+          }}
+        />
+      )}
+
+      <PauseModal
+        visible={paused}
+        turnLimit={state.match.turnSeconds}
+        endRuleShort={endRuleShort(state.match.endRule)}
+        allowTimerChange={false}
+        onPickLimit={() => {}}
+        onResume={() => setPaused(false)}
+        onExit={() => {
+          setPaused(false);
+          setShowExit(true);
+        }}
+      />
+
+      <ExitConfirmModal
+        visible={showExit}
+        ger={me?.ger ?? 0}
+        onConfirm={() => {
+          setShowExit(false);
+          router.replace("/");
+        }}
+        onCancel={() => setShowExit(false)}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    gameArea: { flex: 1, position: 'relative' },
-    centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    centerBoard: { width: 240, height: 320, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  safe: { flex: 1, paddingTop: 8, paddingBottom: 12 },
 
-    previousTilesRow: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 8,
-        gap: 4,
-    },
-    previousTileItem: {
-        width: 48,
-        height: 64,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#ffffffaa',
-        borderRadius: 8,
-    },
-    previousTileImage: { width: 44, height: 60, opacity: 0.8 },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
+  loadingText: { fontSize: 15, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
 
-    currentTilesWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-    centerTileContainer: { alignItems: 'center', justifyContent: 'center' },
-    centerTileOverlap: { marginLeft: -40 },
-    centerTile: { width: 120, height: 200 },
-    emptyText: { fontSize: 14, opacity: 0.5 },
+  pressedDown: { transform: [{ translateY: 2 }] },
 
-    actionRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 12, gap: 12 },
-    actionBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 18 },
-    actionText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-    clearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ff4444', alignItems: 'center', justifyContent: 'center' },
-    clearBtnText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+  },
 
-    handWrap: { paddingVertical: 10 },
-    handItem: { marginRight: 12, alignItems: 'center', width: 84, padding: 4, borderRadius: 12, borderWidth: 2, borderColor: 'transparent' },
-    handItemSelected: { borderColor: '#4CAF50', backgroundColor: '#e8f5e9' },
-    handItemDisabled: { opacity: 0.5 },
-    handTile: { width: 70, height: 110 },
-    handLabel: { fontSize: 11, marginTop: 4 },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-    playersOverlay: { position: 'absolute', top: 50, left: 0, right: 0, zIndex: 999, pointerEvents: 'box-none' },
+  iconBtnText: { fontSize: 15, fontWeight: "800", color: "#fff" },
+
+  turnPillWrap: { flex: 1, alignItems: "center" },
+  turnPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999 },
+  turnPillText: { fontSize: 13, fontWeight: "800" },
+
+  roundPill: {
+    minWidth: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+
+  roundText: { fontSize: 14, fontFamily: MONO, color: "#fff" },
+
+  topSeats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 44,
+    paddingTop: 2,
+  },
+
+  middleRow: { flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 },
+
+  centerArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 210,
+  },
+
+  centerLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1,
+    color: "rgba(255,255,255,0.78)",
+  },
+
+  centerTilesRow: { flexDirection: "row", alignItems: "center" },
+  centerTile: { width: 96, height: 152 },
+  centerTileOverlap: { marginLeft: -60 },
+
+  centerOwnerPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+
+  centerOwnerText: { fontSize: 12, fontWeight: "800", color: PALETTE.yellow },
+
+  centerEmpty: {
+    width: 150,
+    minHeight: 170,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+  },
+
+  centerEmptyText: {
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    textAlign: "center",
+    color: "rgba(255,255,255,0.5)",
+  },
+
+  mySlotRow: { alignItems: "center", paddingVertical: 4 },
+  myPlayedRow: { flexDirection: "row", alignItems: "center" },
+  myPlayedTile: { width: 46, height: 70, borderRadius: 8 },
+  myPlayedTileSecond: { marginLeft: -30 },
+  myPlayedTileWin: { borderWidth: 3, borderColor: PALETTE.yellow, borderRadius: 10 },
+
+  mySlotEmpty: {
+    width: 46,
+    height: 70,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,255,255,0.38)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  mySlotEmptyText: { fontSize: 9, fontWeight: "700", color: "rgba(255,255,255,0.72)" },
+
+  myRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    overflow: "visible",
+  },
+
+  myRing: { width: 50, height: 50, borderRadius: 16, padding: 5, overflow: "visible" },
+
+  myAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  myAvatarText: { fontSize: 14, fontWeight: "900", color: "#fff" },
+
+  chipsRow: { flex: 1, flexDirection: "row", gap: 5 },
+
+  chip: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    alignItems: "center",
+  },
+
+  gerChip: {
+    backgroundColor: "rgba(255,200,61,0.16)",
+    borderRadius: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    alignItems: "center",
+  },
+
+  chipLabel: {
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    color: "rgba(255,255,255,0.78)",
+  },
+
+  chipValue: { fontSize: 13, fontFamily: MONO, marginTop: 1 },
+
+  errorRow: { paddingHorizontal: 14, paddingBottom: 4 },
+  errorText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#fff",
+    backgroundColor: PALETTE.red,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    textAlign: "center",
+    overflow: "hidden",
+  },
+
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+  },
+
+  handWrap: { paddingTop: 12 },
+
+  handItem: {
+    width: 70,
+    alignItems: "center",
+    gap: 5,
+    paddingTop: 7,
+    paddingBottom: 8,
+    paddingHorizontal: 5,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+
+  handItemSelected: {
+    borderColor: PALETTE.green,
+    backgroundColor: "rgba(70,201,58,0.22)",
+    transform: [{ translateY: -10 }],
+  },
+
+  handItemDim: { opacity: 0.55 },
+
+  handTile: { width: 53, height: 84 },
+
+  handLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.85)",
+    maxWidth: 66,
+  },
 });

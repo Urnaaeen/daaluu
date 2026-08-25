@@ -1,0 +1,35 @@
+{
+  "name": "daaluu-server",
+  "version": "1.0.0",
+  "description": "Цай хураах — API сервер (Postgres)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node db/migrate.js",
+    "migrate:status": "node db/migrate.js --status",
+    "smoke": "node scripts/smoke.js",
+    "smoke:game": "node scripts/game-smoke.js",
+    "smoke:rt": "node scripts/realtime-smoke.js",
+    "play:full": "node scripts/play-full.js",
+    "smoke:rules": "node scripts/end-rules-smoke.js",
+    "smoke:presence": "node scripts/presence-smoke.js",
+    "smoke:queue": "node scripts/queue-smoke.js",
+    "smoke:mm": "node scripts/matchmaking-smoke.js",
+    "smoke:flow": "node scripts/queue-flow-smoke.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.3"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}

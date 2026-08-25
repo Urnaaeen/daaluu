@@ -1,16 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { TopStatsBar } from "../components/aTopStatsBar";
+import { Animated, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import ExitConfirmModal from "../components/ExitConfirmModal";
+import FeltBackdrop from "../components/FeltBackdrop";
 import GameEndModal from "../components/GameEndModal";
-import PlayerScore from "../components/PlayerScore";
+import GameSeat from "../components/GameSeat";
+import HistoryDrawer, { type HistoryRound } from "../components/HistoryDrawer";
+import PauseModal from "../components/PauseModal";
+import PeekModal from "../components/PeekModal";
+import SocialPanel from "../components/SocialPanel";
+import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
+import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
 import ChatModule, { type ChatModuleRef } from './ask';
 import { selectBotMove } from './botlogic';
-import { calculateWinner, checkGameEnd, executeTradingSystem, type FinalScorePlayer } from './trading';
+import { calculateWinner, executeTradingSystem, type FinalScorePlayer } from './trading';
 import { TILE_TYPES, type TileInstance } from './types';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from "expo-router";
-import { Animated } from 'react-native';
 
 export function createDeck(): TileInstance[] {
     const deck: TileInstance[] = [];
@@ -82,6 +88,39 @@ export default function PlayScreen() {
     const [hands, setHands] = useState(initialData.hands);
     const [center, setCenter] = useState<(TileInstance | TileInstance[])[]>(initialData.center);
     const [selectedTileIds, setSelectedTileIds] = useState<string[]>([]);
+
+    // ===== ДИЗАЙНЫ UI STATES =====
+    const [showExitConfirm, setShowExitConfirm] = useState(false);
+    const [peekIndex, setPeekIndex] = useState(-1);
+    const [pressHint, setPressHint] = useState(true);
+    const [paused, setPaused] = useState(false);
+    const [turnLimit, setTurnLimit] = useState(20);
+    const [showHistory, setShowHistory] = useState(false);
+    const [history, setHistory] = useState<HistoryRound[]>([]);
+    const [social, setSocial] = useState<"emoji" | "quick" | null>(null);
+    const [bubbles, setBubbles] = useState<(string | null)[]>([null, null, null, null, null]);
+    const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Ярианы бөмбөлөг 2.6 секундын дараа арилна
+    const say = (seat: number, text: string) => {
+        if (bubbleTimer.current) clearTimeout(bubbleTimer.current);
+        setBubbles(prev => {
+            const next = prev.slice();
+            next[seat] = text;
+            return next;
+        });
+        bubbleTimer.current = setTimeout(() => {
+            setBubbles(prev => {
+                const next = prev.slice();
+                next[seat] = null;
+                return next;
+            });
+        }, 2600);
+    };
+
+    useEffect(() => () => {
+        if (bubbleTimer.current) clearTimeout(bubbleTimer.current);
+    }, []);
 
     const myHand = useMemo(() => {
         return [...hands[myIndex]].sort((a, b) => {
@@ -573,6 +612,12 @@ export default function PlayScreen() {
 
         console.log(`🏆 Ялагч: Тоглогч ${winnerIndex}, Rank: ${maxRank}, Оноо: ${scoreToAdd}`);
 
+        // Гарын түүхэд бүртгэх
+        const playedBySeat: (TileInstance[] | null)[] = [0, 1, 2, 3, 4].map(
+            seat => roundMoves.find(m => m.playerIndex === seat)?.tiles ?? null
+        );
+        setHistory(prev => [...prev, { winner: winnerIndex, plays: playedBySeat }]);
+
         let updatedMyScore = myScore;
         let updatedOpponents = opponents;
 
@@ -707,18 +752,36 @@ export default function PlayScreen() {
         setOpponents(result.opponents);
 
         setTimeout(() => {
-            const endCheck = checkGameEnd(result.myScore, result.opponents);
+            // Боттой тоглолт нь "Нэг л удаа хуваах" дүрмээр явна —
+            // мод нэг удаа тарааж, тэр гараа дуусгамагц дүгнэнэ.
+            const endCheck = { gameEnded: true, reason: "single" as const };
 
             if (endCheck.gameEnded) {
                 console.log("🏆 ТОГЛООМ ДУУСЛАА!");
-                console.log(`📊 Шалтгаан: ${endCheck.reason === 'tsai' ? '10 цай' : '10 өглөг'}`);
+                console.log(`📊 Шалтгаан: нэг л удаа хуваах дүрэм`);
 
                 const winnerData = calculateWinner(result.myScore, result.opponents);
                 console.log(`🎉 Ялагч: ${winnerData.winner.name} (${winnerData.winner.finalScore} оноо)`);
 
-                setFinalScores(winnerData);
-                setGameEnded(true);
                 setRoundInProgress(false);
+
+                // Дизайны "Дүн · ялагч" дэлгэц рүү шилжинэ
+                const rows = winnerData.allScores.map((p, i) => ({
+                    place: String(i + 1),
+                    name: p.name,
+                    detail: `${p.tsai} цай · ${p.avlaga} авлага · ${p.uglug} өглөг`,
+                    score: String(p.finalScore),
+                    seat: p.index ?? i,
+                }));
+
+                router.push({
+                    pathname: "/end",
+                    params: {
+                        scores: JSON.stringify(rows),
+                        winner: winnerData.winner.name,
+                        summary: `${winnerData.winner.finalScore} цай хурааж дуусгав`,
+                    },
+                });
             } else {
                 console.log("🔄 Шинэ round эхэллээ");
                 startNewRound();
@@ -784,7 +847,7 @@ export default function PlayScreen() {
 
     useEffect(() => {
         if (currentPlayerIndex === 0) {
-            setTimeLeft(20);
+            setTimeLeft(turnLimit);
             setIsTimerActive(true);
         } else {
             setTimeLeft(2);
@@ -797,272 +860,415 @@ export default function PlayScreen() {
         }
     }, [currentPlayerIndex]);
 
-
-    // useEffect(() => {
-    //     if (!isTimerActive) return;
-
-    //     if (timeLeft <= 0) {
-    //         // Цаг дууссан - автомат алгас
-    //         console.log("⏰ Цаг дууслаа - автомат алгас");
-    //         if (currentPlayerIndex === 0) {
-    //             // Хүн тоглогч - автоматаар мод гаргах
-    //             autoPlayForUser();
-    //         }
-    //         return;
-    //     }
-
-    //     const timer = setInterval(() => {
-    //         setTimeLeft(prev => prev - 1);
-    //     }, 1000);
-
-    //     return () => clearInterval(timer);
-    // }, [isTimerActive, timeLeft, currentPlayerIndex]);
-
+    // Дэлгэц дээрх цагийг буулгаж харуулах (зөвхөн харагдац — автомат гаргалт хийхгүй)
     useEffect(() => {
-        const preloadImages = async () => {
-            const imageUris = TILE_TYPES.map(tile => tile.image);
-            await ExpoImage.prefetch(imageUris);
-            console.log('✅ Бүх модны зургууд ачааллаа!');
-        };
-        preloadImages();
-    }, []);
+        if (paused || turnLimit === 0) return;
+        const timer = setInterval(() => {
+            setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [currentPlayerIndex, paused, turnLimit]);
 
 
-    // Автомат мод гаргах (хүний хувьд - цаг дууссан)
-    // const autoPlayForUser = () => {
-    //     if (myHand.length === 0) return;
-
-    //     console.log("⏰ Цаг дууслаа! Автоматаар мод гаргаж байна...");
-
-    //     if (isLastEntryPair) {
-    //         // ХОС гаргах ёстой
-    //         const validTiles = myHand.filter(t => canSelectTile(t));
-
-    //         if (validTiles.length === 0) {
-    //             console.log("❌ Гаргах мод байхгүй");
-    //             return;
-    //         }
-
-    //         const sorted = validTiles.sort((a, b) => a.rank - b.rank);
-    //         const tile1 = sorted[0];
-
-    //         const remainingValid = myHand.filter(t =>
-    //             t.id !== tile1.id && canSelectTile(t)
-    //         );
-
-    //         if (remainingValid.length > 0) {
-    //             const tile2 = remainingValid.sort((a, b) => a.rank - b.rank)[0];
-    //             setSelectedTileIds([tile1.id, tile2.id]);
-    //         } else {
-    //             setSelectedTileIds([tile1.id]);
-    //         }
-
-    //     } else {
-    //         // НЭГЭЭР тоглох
-    //         const validTiles = myHand.filter(t => canSelectTile(t));
-
-    //         if (validTiles.length === 0) {
-    //             console.log("❌ Гаргах мод байхгүй");
-    //             return;
-    //         }
-
-    //         const sorted = validTiles.sort((a, b) => a.rank - b.rank);
-    //         setSelectedTileIds([sorted[0].id]);
-    //     }
-
-    //     setTimeout(() => {
-    //         handlePlayTile();
-    //     }, 5000);
-    // };
-
-        // Animation хувьсагч
+    // Animation хувьсагч
     const wiggleAnim = useRef(new Animated.Value(0)).current;
-    
-    // Таны ээлж иржих үед animation эхлүүлэх
+
+    // Таны ээлж ирэх үед ээлжийн pill чичирнэ
     useEffect(() => {
         if (currentPlayerIndex === 0) {
             Animated.loop(
                 Animated.sequence([
                     Animated.timing(wiggleAnim, {
-                        toValue: 8,  // Баруун тийш 8px
+                        toValue: 6,
                         duration: 400,
                         useNativeDriver: true
                     }),
                     Animated.timing(wiggleAnim, {
-                        toValue: -8,  // Зүүн тийш 8px
+                        toValue: -6,
                         duration: 800,
                         useNativeDriver: true
                     }),
                     Animated.timing(wiggleAnim, {
-                        toValue: 0,  // Төв рүү буцах
+                        toValue: 0,
                         duration: 400,
                         useNativeDriver: true
                     })
                 ])
             ).start();
         } else {
-            wiggleAnim.setValue(0);  // Бусдын ээлж бол зогсоох
+            wiggleAnim.setValue(0);
         }
     }, [currentPlayerIndex]);
 
+    // ===== ДИЗАЙНЫ ТУСЛАХ УТГУУД =====
+    const dispNames = ["Чи", ...opponents.map(o => o.name)];
+    const myTurn = currentPlayerIndex === 0;
+    const roundFull = roundMoves.length === 5;
+    const lowTime = myTurn && timeLeft <= 5;
+
+    const seatTiles = (i: number) => roundMoves.find(m => m.playerIndex === i)?.tiles ?? null;
+
+    const biggestOwnerIndex = useMemo(() => {
+        if (currentTiles.length === 0) return -1;
+        const move = roundMoves.find(m => m.tiles.some(t => currentTiles.some(ct => ct.id === t.id)));
+        return move ? move.playerIndex : -1;
+    }, [roundMoves, currentTiles]);
+
+    const turnLabel = roundFull
+        ? "Тооцоолж байна…"
+        : myTurn
+            ? turnLimit === 0 ? "Таны ээлж" : `Таны ээлж · ${timeLeft} сек`
+            : `${dispNames[currentPlayerIndex]} бодож байна…`;
+
+    const peekData = peekIndex < 0 ? null : peekIndex === 0
+        ? { name: "Чи", color: AVATAR_COLORS[0], stats: { tsai: myScore.tsai, ger: myScore.stars, avlaga: myScore.avlaga, uglug: myScore.uglug } }
+        : {
+            name: opponents[peekIndex - 1].name,
+            color: AVATAR_COLORS[peekIndex],
+            stats: {
+                tsai: opponents[peekIndex - 1].tsai,
+                ger: opponents[peekIndex - 1].stars,
+                avlaga: opponents[peekIndex - 1].avlaga,
+                uglug: opponents[peekIndex - 1].uglug
+            }
+        };
+
+    const seatFor = (i: number) => (
+        <GameSeat
+            name={dispNames[i]}
+            color={AVATAR_COLORS[i]}
+            isTurn={!roundFull && currentPlayerIndex === i}
+            timeLeft={turnLimit === 0 ? null : timeLeft}
+            ger={i === 0 ? myScore.stars : opponents[i - 1].stars}
+            tiles={seatTiles(i)}
+            isBiggest={biggestOwnerIndex === i}
+            bubble={bubbles[i]}
+            onLongPress={() => setPeekIndex(i)}
+        />
+    );
+
     return (
-        <View style={[styles.safe, { backgroundColor: colors.background }]}>
-            <TopStatsBar
-                avlaga={myScore.avlaga}
-                uglug={myScore.uglug}
-                tsai={myScore.tsai}
-                tsaiTotal={10}
-                ger={myScore.stars}
-            />
+        <View style={[styles.safe, { backgroundColor: colors.feltTop }]}>
+            <FeltBackdrop />
 
-            <View style={styles.gameArea}>
+            {/* TOP BAR */}
+            <View style={styles.topBar}>
+                <Pressable
+                    onPress={() => setPaused(true)}
+                    style={({ pressed }) => [styles.iconBtn, pressed && styles.pressedDown]}
+                >
+                    <Text style={styles.iconBtnText}>❙❙</Text>
+                </Pressable>
 
-                {/* Center board */}
-                <View style={styles.centerWrap}>
-                    <View style={[styles.centerBoard, { backgroundColor: colors.card }]}>
-                        <Animated.View style={[
-                            styles.centerBoard,
+                <View style={styles.turnPillWrap}>
+                    <Animated.View
+                        style={[
+                            styles.turnPill,
                             {
-                                backgroundColor: colors.card,  // Өнгө өөрчлөхгүй
-                                transform: [{ translateX: wiggleAnim }]  // ⬅️ Зүүн-баруун
+                                backgroundColor: roundFull
+                                    ? "rgba(255,255,255,0.14)"
+                                    : myTurn
+                                        ? lowTime ? PALETTE.red : PALETTE.yellow
+                                        : "rgba(255,255,255,0.14)",
+                                transform: [{ translateX: wiggleAnim }]
                             }
-                        ]}>
-                        {/* Өмнөх модууд */}
-                        {previousTiles.length > 0 && (
-                            <View style={styles.previousTilesRow}>
-                                {previousTiles.map((tile, idx) => (
-                                    <View key={`${tile.id}_${idx}`} style={styles.previousTileItem}>
-                                        <ExpoImage
-                                            source={tile.image}
-                                            style={styles.previousTileImage}
-                                            contentFit="contain"
-                                            cachePolicy="memory-disk"
-                                        />
-                                    </View>
-                                ))}
-                            </View>
-                        )}
-
-                        {/* Одоогийн том мод(ууд) */}
-                        {currentTiles.length > 0 ? (
-                            <View style={styles.currentTilesWrap}>
-                                {currentTiles.map((tile, idx) => (
-                                    <View
-                                        key={tile.id}
-                                        style={[
-                                            styles.centerTileContainer,
-                                            currentTiles.length === 2 && idx === 1 && styles.centerTileOverlap
-                                        ]}
-                                    >
-                                        <ExpoImage
-                                            source={tile.image}
-                                            style={styles.centerTile}
-                                            contentFit="contain"
-                                            priority="high"
-                                            cachePolicy="memory-disk"
-                                        />
-                                    </View>
-                                ))}
-                            </View>
-                        ) : (
-                            <Text style={styles.emptyText}>Гол хоосон</Text>
-                        )}
-                        </Animated.View>
-                    </View>
+                        ]}
+                    >
+                        <Text
+                            style={[
+                                styles.turnPillText,
+                                {
+                                    color: roundFull
+                                        ? "rgba(255,255,255,0.85)"
+                                        : myTurn
+                                            ? lowTime ? "#fff" : PALETTE.yellowText
+                                            : "rgba(255,255,255,0.85)"
+                                }
+                            ]}
+                        >
+                            {turnLabel}
+                        </Text>
+                    </Animated.View>
                 </View>
 
-                {/* Action row */}
-                <View style={styles.actionRow}>
-                    <Pressable
-                        style={[styles.actionBtn, { backgroundColor: colors.card }]}
-                        onPress={() => chatModuleRef.current?.open()}
-                    >
-                        <Text style={styles.actionText}>Дүрэм асуух</Text>
-                    </Pressable>
+                <Pressable
+                    onPress={() => setShowHistory(true)}
+                    style={({ pressed }) => [styles.iconBtn, pressed && styles.pressedDown]}
+                >
+                    <Text style={styles.iconBtnText}>☰</Text>
+                </Pressable>
+            </View>
 
-                    <Pressable
-                        style={[
-                            styles.actionBtn,
-                            styles.primaryBtn,
-                            { backgroundColor: colors.card },
-                            (!canPlaySelected() || currentPlayerIndex !== 0) && styles.disabledBtn
-                        ]}
-                        onPress={handlePlayTile}
-                        disabled={!canPlaySelected() || currentPlayerIndex !== 0}
-                    >
-                        <Text style={[styles.actionText, styles.primaryText]}>
-                            Гарах {selectedTileIds.length > 0 && `(${selectedTileIds.length})`}
-                        </Text>
-                    </Pressable>
+            {/* TOP SEATS (2, 3) */}
+            <View style={styles.topSeats}>
+                {seatFor(2)}
+                {seatFor(3)}
+            </View>
 
-                    {/* <Pressable style={[styles.actionBtn, { backgroundColor: colors.card }]}>
-                        <Text style={styles.actionText}>Дуудлага</Text>
-                    </Pressable> */}
+            {/* MIDDLE: LEFT SEAT + CENTER + RIGHT SEAT */}
+            <View style={styles.middleRow}>
+                {seatFor(1)}
 
-                    {selectedTileIds.length > 0 && (
-                        <Pressable
-                            style={styles.clearBtn}
-                            onPress={() => setSelectedTileIds([])}
-                        >
-                            <Text style={styles.clearBtnText}>✕</Text>
-                        </Pressable>
+                <View style={styles.centerArea}>
+                    {currentTiles.length > 0 ? (
+                        <>
+                            <Text style={styles.centerLabel}>ХАМГИЙН ТОМ</Text>
+                            <View style={styles.centerTilesRow}>
+                                {currentTiles.map((tile, idx) => (
+                                    <ExpoImage
+                                        key={tile.id}
+                                        source={tile.image}
+                                        style={[styles.centerTile, idx === 1 && styles.centerTileOverlap]}
+                                        contentFit="contain"
+                                        priority="high"
+                                        cachePolicy="memory-disk"
+                                    />
+                                ))}
+                            </View>
+                            <View style={styles.centerOwnerPill}>
+                                <Text style={styles.centerOwnerText}>
+                                    {biggestOwnerIndex >= 0 ? `${dispNames[biggestOwnerIndex]} · ` : ""}
+                                    {currentTiles[0].title}
+                                </Text>
+                            </View>
+                        </>
+                    ) : (
+                        <View style={styles.centerEmpty}>
+                            <Text style={styles.centerEmptyText}>
+                                Гол хоосон{"\n"}8-аас дээш мод эсвэл хосоор эхэл
+                            </Text>
+                        </View>
+                    )}
+
+                    {previousTiles.length > 0 && (
+                        <View style={styles.prevRow}>
+                            {previousTiles.map((tile, idx) => (
+                                <ExpoImage
+                                    key={`${tile.id}_${idx}`}
+                                    source={tile.image}
+                                    style={styles.prevTile}
+                                    contentFit="contain"
+                                    cachePolicy="memory-disk"
+                                />
+                            ))}
+                        </View>
                     )}
                 </View>
 
-                {/* My hand */}
-                <View style={styles.handWrap}>
-                    <FlatList
-                        horizontal
-                        data={myHand}
-                        keyExtractor={(t) => t.id}
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={{ paddingHorizontal: 12 }}
-                        renderItem={({ item }) => {
-                            const isSelected = selectedTileIds.includes(item.id);
-                            const canSelect = canSelectTile(item);
+                {seatFor(4)}
+            </View>
 
-                            return (
-                                <Pressable
-                                    style={[
-                                        styles.handItem,
-                                        isSelected && styles.handItemSelected,
-                                        !canSelect && styles.handItemDisabled
-                                    ]}
-                                    onPress={() => handleSelectTile(item.id)}
-                                    disabled={!isSelected && !canSelect}
-                                >
-                                    <ExpoImage
-                                        source={item.image}
-                                        style={[
-                                            styles.handTile,
-                                            !canSelect && styles.handTileDisabled
-                                        ]}
-                                        contentFit="contain"
-                                        transition={0}
-                                        cachePolicy="memory-disk"
-                                    />
-                                    <Text style={[
-                                        styles.handLabel,
-                                        !canSelect && styles.handLabelDisabled,
-                                        { color: colors.text }
-                                    ]} numberOfLines={1}>
-                                        {item.title}
-                                    </Text>
-                                </Pressable>
-                            );
-                        }}
-                    />
+            {/* MY PLAYED TILE */}
+            <View style={styles.mySlotRow}>
+                {seatTiles(0) ? (
+                    <View style={styles.myPlayedRow}>
+                        {seatTiles(0)!.slice(0, 2).map((t, i) => (
+                            <ExpoImage
+                                key={`${t.id}_${i}`}
+                                source={t.image}
+                                contentFit="contain"
+                                cachePolicy="memory-disk"
+                                style={[
+                                    styles.myPlayedTile,
+                                    i === 1 && styles.myPlayedTileSecond,
+                                    biggestOwnerIndex === 0 && styles.myPlayedTileWin
+                                ]}
+                            />
+                        ))}
+                    </View>
+                ) : (
+                    <View style={styles.mySlotEmpty}>
+                        <Text style={styles.mySlotEmptyText}>Чи</Text>
+                    </View>
+                )}
+            </View>
+
+            {/* MY ROW: AVATAR + STATS */}
+            <View style={styles.myRow}>
+                <View
+                    style={[
+                        styles.myRing,
+                        {
+                            backgroundColor: myTurn && !roundFull
+                                ? lowTime ? PALETTE.red : PALETTE.yellow
+                                : "rgba(255,255,255,0.10)"
+                        }
+                    ]}
+                >
+                    {!!bubbles[0] && (
+                        <View style={styles.myBubble}>
+                            <Text style={styles.myBubbleText} numberOfLines={1}>{bubbles[0]}</Text>
+                        </View>
+                    )}
+                    <Pressable onLongPress={() => setPeekIndex(0)} delayLongPress={380}>
+                        <View style={[styles.myAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
+                            <Text style={styles.myAvatarText}>Ч</Text>
+                        </View>
+                    </Pressable>
                 </View>
 
-                <View style={styles.playersOverlay}>
-                    <PlayerScore
-                        opponents={opponents}
-                        showOpponentScores={!roundInProgress}
-                        currentPlayerIndex={currentPlayerIndex}
-                        timeLeft={timeLeft}
-                    />
+                <View style={styles.chipsRow}>
+                    <View style={styles.chip}>
+                        <Text style={styles.chipLabel}>ЦАЙ</Text>
+                        <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>{myScore.tsai}</Text>
+                    </View>
+                    <View style={styles.chip}>
+                        <Text style={styles.chipLabel}>АВЛАГА</Text>
+                        <Text style={[styles.chipValue, { color: PALETTE.green }]}>{myScore.avlaga}</Text>
+                    </View>
+                    <View style={styles.chip}>
+                        <Text style={styles.chipLabel}>ӨГЛӨГ</Text>
+                        <Text style={[styles.chipValue, { color: PALETTE.orange }]}>{myScore.uglug}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.gerChip}>
+                    <Text style={styles.chipLabel}>ГЭР</Text>
+                    <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>🏠 {myScore.stars}</Text>
                 </View>
             </View>
+
+            {/* PRESS HINT */}
+            {pressHint && (
+                <View style={styles.hintRow}>
+                    <Text style={styles.hintText}>
+                        Тоглогчийн зураг дээр удаан дарж цай · авлага · өглөгийг хар
+                    </Text>
+                    <Pressable onPress={() => setPressHint(false)} style={styles.hintBtn}>
+                        <Text style={styles.hintBtnText}>Ойлголоо</Text>
+                    </Pressable>
+                </View>
+            )}
+
+            {/* ACTIONS */}
+            <View style={styles.actionRow}>
+                <Pressable
+                    onPress={() => setSocial("emoji")}
+                    style={({ pressed }) => [styles.socialBtn, pressed && styles.pressedDown]}
+                >
+                    <Text style={styles.socialBtnText}>🙂</Text>
+                </Pressable>
+
+                <Pressable
+                    onPress={() => setSocial("quick")}
+                    style={({ pressed }) => [styles.socialBtn, pressed && styles.pressedDown]}
+                >
+                    <Text style={styles.socialBtnText}>💬</Text>
+                </Pressable>
+
+                <PushButton
+                    label={selectedTileIds.length > 0 ? `Мод гаргах (${selectedTileIds.length})` : "Мод гаргах"}
+                    color={canPlaySelected() && myTurn ? PALETTE.green : "rgba(255,255,255,0.10)"}
+                    shadowColor={canPlaySelected() && myTurn ? PALETTE.greenDark : "transparent"}
+                    textColor={canPlaySelected() && myTurn ? "#fff" : "rgba(255,255,255,0.45)"}
+                    onPress={handlePlayTile}
+                    disabled={!canPlaySelected() || !myTurn}
+                    radius={15}
+                    style={{ flex: 1 }}
+                    faceStyle={{ paddingVertical: 14 }}
+                    textStyle={{ fontSize: 16 }}
+                />
+
+                {selectedTileIds.length > 0 && (
+                    <PushButton
+                        label="✕"
+                        color={PALETTE.red}
+                        shadowColor={PALETTE.redDark}
+                        onPress={() => setSelectedTileIds([])}
+                        radius={15}
+                        faceStyle={{ width: 48, paddingVertical: 14, paddingHorizontal: 0 }}
+                        textStyle={{ fontSize: 16 }}
+                    />
+                )}
+            </View>
+
+            {/* MY HAND */}
+            <View style={styles.handWrap}>
+                <FlatList
+                    horizontal
+                    data={myHand}
+                    keyExtractor={(t) => t.id}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: 14, gap: 9 }}
+                    renderItem={({ item }) => {
+                        const isSelected = selectedTileIds.includes(item.id);
+                        const canSelect = canSelectTile(item);
+
+                        return (
+                            <Pressable
+                                style={[
+                                    styles.handItem,
+                                    isSelected && styles.handItemSelected,
+                                    !isSelected && !canSelect && styles.handItemDisabled
+                                ]}
+                                onPress={() => handleSelectTile(item.id)}
+                                disabled={!isSelected && !canSelect}
+                            >
+                                <ExpoImage
+                                    source={item.image}
+                                    style={styles.handTile}
+                                    contentFit="contain"
+                                    transition={0}
+                                    cachePolicy="memory-disk"
+                                />
+                                <Text style={styles.handLabel} numberOfLines={1}>
+                                    {item.title}
+                                </Text>
+                            </Pressable>
+                        );
+                    }}
+                />
+            </View>
+
+            {/* MODALS */}
+            {peekData && (
+                <PeekModal
+                    visible={peekIndex >= 0}
+                    onClose={() => setPeekIndex(-1)}
+                    name={peekData.name}
+                    color={peekData.color}
+                    stats={peekData.stats}
+                />
+            )}
+
+            <PauseModal
+                visible={paused}
+                turnLimit={turnLimit}
+                endRuleShort="Нэг хуваалт"
+                onPickLimit={(value) => {
+                    setTurnLimit(value);
+                    setTimeLeft(value);
+                }}
+                onResume={() => setPaused(false)}
+                onExit={() => {
+                    setPaused(false);
+                    setShowExitConfirm(true);
+                }}
+            />
+
+            <HistoryDrawer
+                visible={showHistory}
+                onClose={() => setShowHistory(false)}
+                rounds={history}
+                names={dispNames}
+            />
+
+            <SocialPanel
+                mode={social}
+                onClose={() => setSocial(null)}
+                onSend={(text) => say(0, text)}
+            />
+
+            <ExitConfirmModal
+                visible={showExitConfirm}
+                ger={myScore.stars}
+                onConfirm={() => {
+                    setShowExitConfirm(false);
+                    handleExit();
+                }}
+                onCancel={() => setShowExitConfirm(false)}
+            />
+
             {finalScores && (
                 <GameEndModal
                     visible={gameEnded}
@@ -1073,151 +1279,362 @@ export default function PlayScreen() {
                 />
             )}
             <ChatModule ref={chatModuleRef} />
-        </View >
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     safe: {
         flex: 1,
-        // backgroundColor: "#dbe9ff"
+        paddingTop: 8,
+        paddingBottom: 12,
     },
 
-    gameArea: {
-        flex: 1,
-        position: "relative",
+    pressedDown: {
+        transform: [{ translateY: 2 }],
     },
 
-    centerWrap: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-
-    playersOverlay: {
-        position: "absolute",
-        top: 50,
-        left: 0,
-        right: 0,
-        zIndex: 999,
-        pointerEvents: "box-none",
-    },
-
-    previousTilesRow: {
+    topBar: {
         flexDirection: "row",
-        justifyContent: "center",
         alignItems: "center",
-        marginBottom: 8,
-        gap: 4,
+        gap: 8,
+        paddingHorizontal: 14,
+        paddingBottom: 6,
     },
-    previousTileItem: {
-        width: 48,
-        height: 64,
+
+    iconBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: "rgba(255,255,255,0.14)",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#ffffffaa",
+    },
+
+    iconBtnText: {
+        fontSize: 15,
+        fontWeight: "800",
+        color: "#fff",
+    },
+
+    turnPillWrap: {
+        flex: 1,
+        alignItems: "center",
+    },
+
+    turnPill: {
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: 999,
+    },
+
+    turnPillText: {
+        fontSize: 13,
+        fontWeight: "800",
+    },
+
+    topSeats: {
+        flexDirection: "row",
+        justifyContent: "space-around",
+        paddingHorizontal: 44,
+        paddingTop: 2,
+    },
+
+    middleRow: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 12,
+    },
+
+    centerArea: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        minHeight: 210,
+    },
+
+    centerLabel: {
+        fontSize: 10,
+        fontWeight: "700",
+        letterSpacing: 1,
+        color: "rgba(255,255,255,0.78)",
+    },
+
+    centerTilesRow: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+
+    centerTile: {
+        width: 96,
+        height: 152,
+    },
+
+    centerTileOverlap: {
+        marginLeft: -60,
+    },
+
+    centerOwnerPill: {
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 999,
+        backgroundColor: "rgba(0,0,0,0.3)",
+    },
+
+    centerOwnerText: {
+        fontSize: 12,
+        fontWeight: "800",
+        color: PALETTE.yellow,
+    },
+
+    centerEmpty: {
+        width: 130,
+        height: 170,
+        borderRadius: 20,
+        backgroundColor: "rgba(255,255,255,0.07)",
+        borderWidth: 2,
+        borderStyle: "dashed",
+        borderColor: "rgba(255,255,255,0.18)",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 12,
+    },
+
+    centerEmptyText: {
+        fontSize: 12,
+        fontWeight: "700",
+        lineHeight: 18,
+        textAlign: "center",
+        color: "rgba(255,255,255,0.5)",
+    },
+
+    prevRow: {
+        flexDirection: "row",
+        gap: 4,
+        marginTop: 2,
+    },
+
+    prevTile: {
+        width: 26,
+        height: 40,
+        opacity: 0.55,
+    },
+
+    mySlotRow: {
+        alignItems: "center",
+        paddingVertical: 4,
+    },
+
+    myPlayedRow: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+
+    myPlayedTile: {
+        width: 46,
+        height: 70,
         borderRadius: 8,
     },
-    previousTileImage: {
-        width: 44,
-        height: 60,
-        opacity: 0.8,
+
+    myPlayedTileSecond: {
+        marginLeft: -30,
     },
 
-    centerBoard: {
-        width: 240,
-        height: 320,
-        borderRadius: 28,
-        backgroundColor: "#ffffffcc",
+    myPlayedTileWin: {
+        borderWidth: 3,
+        borderColor: PALETTE.yellow,
+        borderRadius: 10,
+    },
+
+    mySlotEmpty: {
+        width: 46,
+        height: 70,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderStyle: "dashed",
+        borderColor: "rgba(255,255,255,0.38)",
         alignItems: "center",
         justifyContent: "center",
     },
 
-    currentTilesWrap: {
+    mySlotEmptyText: {
+        fontSize: 9,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.72)",
+    },
+
+    myRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        overflow: "visible",
+    },
+
+    myRing: {
+        width: 50,
+        height: 50,
+        borderRadius: 16,
+        padding: 5,
+        overflow: "visible", // ярианы бөмбөлөг гадагш гарна
+    },
+
+    myAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
+    myAvatarText: {
+        fontSize: 14,
+        fontWeight: "900",
+        color: "#fff",
+    },
+
+    myBubble: {
+        position: "absolute",
+        bottom: 54,
+        left: 0,
+        maxWidth: 150,
+        paddingHorizontal: 11,
+        paddingVertical: 7,
+        borderRadius: 14,
+        backgroundColor: "#fff",
+        zIndex: 3,
+    },
+
+    myBubbleText: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#2B2D31",
+    },
+
+    chipsRow: {
+        flex: 1,
+        flexDirection: "row",
+        gap: 5,
+    },
+
+    chip: {
+        flex: 1,
+        backgroundColor: "rgba(255,255,255,0.10)",
+        borderRadius: 10,
+        paddingVertical: 4,
+        paddingHorizontal: 2,
+        alignItems: "center",
+    },
+
+    gerChip: {
+        backgroundColor: "rgba(255,200,61,0.16)",
+        borderRadius: 10,
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        alignItems: "center",
+    },
+
+    chipLabel: {
+        fontSize: 8,
+        fontWeight: "700",
+        letterSpacing: 0.4,
+        color: "rgba(255,255,255,0.78)",
+    },
+
+    chipValue: {
+        fontSize: 13,
+        fontFamily: MONO,
+        marginTop: 1,
+    },
+
+    hintRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
+        gap: 7,
+        paddingHorizontal: 14,
+        paddingBottom: 4,
     },
-    centerTileContainer: {
-        alignItems: "center",
-        justifyContent: "center",
+
+    hintText: {
+        flexShrink: 1,
+        fontSize: 10,
+        fontWeight: "600",
+        color: "rgba(255,255,255,0.72)",
     },
-    centerTileOverlap: {
-        marginLeft: -40,
+
+    hintBtn: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 999,
+        backgroundColor: "rgba(255,255,255,0.16)",
     },
-    centerTile: {
-        width: 120,
-        height: 200
-    },
-    emptyText: {
-        fontSize: 14,
-        opacity: 0.5,
+
+    hintBtnText: {
+        fontSize: 9,
+        fontWeight: "800",
+        color: "#fff",
     },
 
     actionRow: {
         flexDirection: "row",
-        justifyContent: "space-around",
         alignItems: "center",
-        paddingHorizontal: 12,
-        paddingBottom: 8,
+        gap: 8,
+        paddingHorizontal: 14,
+        paddingBottom: 6,
     },
-    actionBtn: {
-        paddingHorizontal: 18,
-        paddingVertical: 10,
-        borderRadius: 18,
-        backgroundColor: "#ffffffaa",
-    },
-    primaryBtn: { backgroundColor: "#ffffff" },
-    disabledBtn: { opacity: 0.5 },
-    actionText: { fontWeight: "700" },
-    primaryText: { color: "#d44" },
 
-    clearBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: "#ff4444",
+    socialBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: "rgba(255,255,255,0.14)",
         alignItems: "center",
         justifyContent: "center",
-        marginLeft: 8,
-    },
-    clearBtnText: {
-        color: "#fff",
-        fontSize: 20,
-        fontWeight: "700",
     },
 
-    handWrap: { paddingVertical: 10 },
+    socialBtnText: {
+        fontSize: 18,
+    },
+
+    handWrap: {
+        paddingTop: 12,
+    },
+
     handItem: {
-        marginRight: 12,
+        width: 70,
         alignItems: "center",
-        width: 84,
-        padding: 4,
-        borderRadius: 12,
+        gap: 5,
+        paddingTop: 7,
+        paddingBottom: 8,
+        paddingHorizontal: 5,
+        borderRadius: 14,
         borderWidth: 2,
         borderColor: "transparent",
     },
+
     handItemSelected: {
-        borderColor: "#4CAF50",
-        backgroundColor: "#e8f5e9",
-        transform: [{ translateY: -8 }],
+        borderColor: PALETTE.green,
+        backgroundColor: "rgba(70,201,58,0.22)",
+        transform: [{ translateY: -10 }],
     },
+
     handItemDisabled: {
-        opacity: 0.4,
+        opacity: 0.42,
     },
+
     handTile: {
-        width: 70,
-        height: 110
+        width: 53,
+        height: 84,
     },
-    handTileDisabled: {
-        opacity: 0.5,
-    },
+
     handLabel: {
-        fontSize: 11,
-        marginTop: 4,
-        opacity: 0.75
-    },
-    handLabelDisabled: {
-        opacity: 0.3,
+        fontSize: 9,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.85)",
+        maxWidth: 66,
     },
 });
