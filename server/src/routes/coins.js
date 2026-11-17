@@ -2,9 +2,9 @@ import { Router } from "express";
 import { config } from "../config.js";
 import { query, withTransaction } from "../db.js";
 import { requireAuth } from "../lib/auth.js";
-import { badRequest, forbidden, notFound, wrap } from "../lib/errors.js";
+import { ApiError, badRequest, forbidden, notFound, wrap } from "../lib/errors.js";
 import { applyCoins, COIN_PACKS, findPack } from "../services/coins.js";
-import { createInvoice, verifyCallback } from "../services/qpay.js";
+import { checkInvoicePaid, createInvoice, qpayEnabled, verifyCallback } from "../services/qpay.js";
 
 const router = Router();
 
@@ -28,6 +28,12 @@ router.get(
   })
 );
 
+const PAYMENT_COLS =
+  "id, pack_coins, price_mnt, qpay_invoice_id, qr_text, qr_image, bank_urls, status, paid_at, expires_at";
+
+// Апп "Төлбөр хийсэн (demo)" товч харуулах эсэх
+const demoAllowed = () => config.allowDemoPayments;
+
 // Цэнэглэх нэхэмжлэх үүсгэх → апп QR + банкны товчнуудыг харуулна
 router.post(
   "/invoice",
@@ -36,22 +42,29 @@ router.post(
     const pack = findPack(String(req.body?.packId ?? ""));
     if (!pack) throw badRequest("bad_pack", "Ийм багц байхгүй байна.");
 
-    const invoice = await createInvoice({
-      userId: req.user.id,
-      packId: pack.id,
-      coins: pack.coins,
-      priceMnt: pack.price,
-    });
+    // Эхлээд мөр үүсгэнэ — id нь QPay-д sender_invoice_no болж, callback-д буцаж ирнэ
+    const created = await query(
+      `insert into payments (user_id, pack_coins, price_mnt) values ($1, $2, $3) returning id`,
+      [req.user.id, pack.coins, pack.price]
+    );
+    const paymentId = created.rows[0].id;
+
+    let invoice;
+    try {
+      invoice = await createInvoice({ paymentId, coins: pack.coins, priceMnt: pack.price });
+    } catch (err) {
+      console.error("❌ QPay нэхэмжлэх:", err.message);
+      await query("update payments set status = 'failed' where id = $1", [paymentId]);
+      throw new ApiError(502, "qpay_unavailable", "QPay-тэй холбогдож чадсангүй. Дахин оролдоно уу.");
+    }
 
     const { rows } = await query(
-      `insert into payments
-         (user_id, pack_coins, price_mnt, qpay_invoice_id, qr_text, qr_image, bank_urls, expires_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
-       returning id, pack_coins, price_mnt, qpay_invoice_id, qr_text, qr_image, bank_urls, status, expires_at`,
+      `update payments
+          set qpay_invoice_id = $2, qr_text = $3, qr_image = $4, bank_urls = $5, expires_at = $6
+        where id = $1
+        returning ${PAYMENT_COLS}`,
       [
-        req.user.id,
-        pack.coins,
-        pack.price,
+        paymentId,
         invoice.invoiceId,
         invoice.qrText,
         invoice.qrImage,
@@ -60,22 +73,58 @@ router.post(
       ]
     );
 
-    res.status(201).json({ payment: rows[0], mock: !!invoice.mock });
+    res.status(201).json({ payment: rows[0], mock: !!invoice.mock, demo: demoAllowed() });
   })
 );
+
+/**
+ * QPay-ээс төлбөрийг шалгаж, төлөгдсөн бол зоос нэмнэ.
+ * Апп 3 секунд тутам асуудаг тул нэг нэхэмжлэхийг 3с-д нэгээс олон удаа QPay руу явуулахгүй.
+ */
+const lastCheck = new Map();
+
+const syncWithQpay = async (payment) => {
+  if (!qpayEnabled() || payment.status !== "pending" || !payment.qpay_invoice_id) return null;
+  if (payment.qpay_invoice_id.startsWith("MOCK-")) return null;
+
+  const now = Date.now();
+  if (now - (lastCheck.get(payment.id) ?? 0) < 3000) return null;
+  lastCheck.set(payment.id, now);
+
+  const { paidAmount, raw } = await checkInvoicePaid(payment.qpay_invoice_id);
+  if (paidAmount < payment.price_mnt) return null;
+
+  lastCheck.delete(payment.id);
+  return settlePayment(payment.id, raw);
+};
 
 // Нэхэмжлэхийн төлөв — апп QR харуулж байхдаа асууна
 router.get(
   "/invoice/:id",
   requireAuth,
   wrap(async (req, res) => {
-    const { rows } = await query(
-      `select id, pack_coins, price_mnt, qr_text, bank_urls, status, paid_at, expires_at
-         from payments where id = $1 and user_id = $2`,
-      [req.params.id, req.user.id]
-    );
+    const load = () =>
+      query(`select ${PAYMENT_COLS} from payments where id = $1 and user_id = $2`, [
+        req.params.id,
+        req.user.id,
+      ]);
+
+    let { rows } = await load();
     if (!rows.length) throw notFound("payment_not_found", "Нэхэмжлэх олдсонгүй.");
-    res.json({ payment: rows[0], coins: req.user.coins });
+
+    let coins = req.user.coins;
+    try {
+      const settled = await syncWithQpay(rows[0]);
+      if (settled) {
+        coins = settled.coins;
+        ({ rows } = await load());
+      }
+    } catch (err) {
+      // QPay түр хүрэхгүй байсан ч төлөвийг буцаана — дараагийн асуултаар дахин шалгана
+      console.error("⚠️ QPay шалгалт:", err.message);
+    }
+
+    res.json({ payment: rows[0], coins, demo: demoAllowed() });
   })
 );
 
@@ -117,22 +166,39 @@ const settlePayment = async (paymentId, rawCallback) =>
     return { alreadyPaid: false, coins: balanceAfter };
   });
 
-// QPay-ийн webhook. Нууц түлхүүрээр баталгаажна — нэвтрэлт шаардахгүй.
-router.post(
-  "/callback",
-  wrap(async (req, res) => {
-    const secret = req.query.secret ?? req.get("x-qpay-secret");
-    if (!verifyCallback({ secret })) {
-      throw forbidden("bad_callback_secret", "Callback баталгаажсангүй.");
-    }
+/**
+ * QPay-ийн webhook. URL дахь нууц түлхүүрээр шүүж, төлбөрийг QPay-ээс
+ * ДАХИН асууж баталгаажуулна — callback-ийн агуулгад итгэхгүй.
+ * QPay ихэвчлэн GET-ээр дууддаг тул хоёуланг нь хүлээн авна.
+ */
+const handleCallback = wrap(async (req, res) => {
+  const secret = req.query.secret ?? req.get("x-qpay-secret");
+  if (!verifyCallback({ secret })) {
+    throw forbidden("bad_callback_secret", "Callback баталгаажсангүй.");
+  }
 
-    const paymentId = req.body?.payment_id ?? req.query.payment_id;
-    if (!paymentId) throw badRequest("no_payment_id", "payment_id алга.");
+  const paymentId = req.query.payment_id ?? req.body?.payment_id;
+  if (!paymentId) throw badRequest("no_payment_id", "payment_id алга.");
 
-    const result = await settlePayment(paymentId, req.body);
-    res.json({ ok: true, ...result });
-  })
-);
+  if (!qpayEnabled()) {
+    // Mock горим — нууц түлхүүр л хангалттай (локал туршилт)
+    const result = await settlePayment(paymentId, req.body ?? null);
+    return res.json({ ok: true, ...result });
+  }
+
+  const { rows } = await query(
+    `select id, price_mnt, qpay_invoice_id, status from payments where id = $1`,
+    [paymentId]
+  );
+  if (!rows.length) throw notFound("payment_not_found", "Нэхэмжлэх олдсонгүй.");
+
+  lastCheck.delete(rows[0].id);
+  const result = await syncWithQpay(rows[0]);
+  res.json({ ok: true, settled: !!result, ...(result ?? {}) });
+});
+
+router.get("/callback", handleCallback);
+router.post("/callback", handleCallback);
 
 /**
  * Хөгжүүлэлтийн товч — "Төлбөр хийсэн (demo)".

@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Image as ExpoImage } from "expo-image";
 import {
   ActivityIndicator,
   Linking,
@@ -19,13 +20,14 @@ import { useTheme } from "../context/ThemeContext";
 import { api, ApiError } from "../lib/api";
 import { BLUR_BG, MONO, PALETTE } from "../theme/colors";
 
-type BankUrl = { name: string; scheme: string; link: string };
+type BankUrl = { name: string; scheme: string; link: string; logo?: string };
 
 type Payment = {
   id: number;
   pack_coins: number;
   price_mnt: number;
   qr_text: string;
+  qr_image: string | null;
   bank_urls: BankUrl[];
   status: string;
 };
@@ -41,6 +43,8 @@ export default function Coins() {
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [error, setError] = useState("");
+  // Сервер demo төлбөр зөвшөөрч байгаа эсэх (QPay холбогдоогүй туршилтын үе)
+  const [demo, setDemo] = useState(false);
 
   const closeSheet = () => {
     setPayment(null);
@@ -52,11 +56,12 @@ export default function Coins() {
     setCreating(true);
     setError("");
     try {
-      const res = await api<{ payment: Payment }>("/coins/invoice", {
+      const res = await api<{ payment: Payment; demo: boolean }>("/coins/invoice", {
         method: "POST",
         body: { packId: pack.id },
       });
       setPaid(false);
+      setDemo(!!res.demo);
       setPayment(res.payment);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Нэхэмжлэх үүсгэж чадсангүй.");
@@ -78,6 +83,28 @@ export default function Coins() {
       setError(`${bank.name} апп нээгдсэнгүй.`);
     }
   };
+
+  // Төлбөр орсон эсэхийг 3с тутам серверээс асууна (сервер QPay-ээс шалгана)
+  useEffect(() => {
+    if (!payment || paid) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const res = await api<{ payment: Payment }>(`/coins/invoice/${payment.id}`);
+        if (alive && res.payment.status === "paid") {
+          await refresh();
+          setPaid(true);
+        }
+      } catch {
+        // сүлжээ түр тасарсан — дараагийн удаа дахин асууна
+      }
+    };
+    const timer = setInterval(tick, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [payment, paid, refresh]);
 
   // Мерчант эрх авах хүртэлх demo баталгаажуулалт
   const demoPay = async () => {
@@ -213,12 +240,26 @@ export default function Coins() {
                     </View>
                   )}
 
+                  {/* QR — компьютерээс тоглож байгаа бол утсаараа уншуулна */}
+                  {!!payment.qr_image && (
+                    <View style={styles.qrBox}>
+                      <ExpoImage
+                        source={{ uri: `data:image/png;base64,${payment.qr_image}` }}
+                        style={styles.qrImage}
+                        contentFit="contain"
+                      />
+                      <Text style={[styles.webHint, { color: colors.muted }]}>
+                        Банкны аппаараа QR уншуулна уу · төлөгдмөгц автоматаар баталгаажна
+                      </Text>
+                    </View>
+                  )}
+
                   {/* БАНКНЫ АППУУД */}
                   <ScrollView style={styles.bankScroll} showsVerticalScrollIndicator={false}>
                     <View style={styles.bankGrid}>
                       {payment.bank_urls.map((b) => (
                         <Pressable
-                          key={b.scheme}
+                          key={b.scheme + b.name}
                           onPress={() => openBank(b)}
                           style={({ pressed }) => [
                             styles.bankBtn,
@@ -240,6 +281,7 @@ export default function Coins() {
                     </Text>
                   )}
 
+                  {demo ? (
                   <PushButton
                     label={paying ? "Шалгаж байна…" : "Төлбөр хийсэн (demo)"}
                     color={paying ? colors.sunken : PALETTE.green}
@@ -250,6 +292,14 @@ export default function Coins() {
                     style={{ width: "100%" }}
                     textStyle={{ fontSize: 16 }}
                   />
+                  ) : (
+                    <View style={styles.waitRow}>
+                      <ActivityIndicator size="small" color={colors.accent} />
+                      <Text style={[styles.waitText, { color: colors.subText }]}>
+                        Төлбөр хүлээж байна…
+                      </Text>
+                    </View>
+                  )}
                 </>
               ) : (
                 <View style={styles.successBody}>
@@ -406,6 +456,10 @@ const styles = StyleSheet.create({
 
   bankName: { fontSize: 12, fontWeight: "800", textAlign: "center" },
 
+  qrBox: { alignItems: "center", gap: 6 },
+  qrImage: { width: 180, height: 180, borderRadius: 12, backgroundColor: "#fff" },
+  waitRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12 },
+  waitText: { fontSize: 14, fontWeight: "700" },
   webHint: { fontSize: 11, fontWeight: "600", textAlign: "center" },
 
   successBody: { alignItems: "center", gap: 10, paddingTop: 6 },

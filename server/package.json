@@ -18,7 +18,9 @@
     "smoke:queue": "node scripts/queue-smoke.js",
     "smoke:mm": "node scripts/matchmaking-smoke.js",
     "smoke:flow": "node scripts/queue-flow-smoke.js",
-    "smoke:friends": "node scripts/friends-smoke.js"
+    "smoke:friends": "node scripts/friends-smoke.js",
+    "smoke:qpay": "node scripts/qpay-smoke.js",
+    "smoke:qpay:fake": "node scripts/qpay-smoke.js --fake"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

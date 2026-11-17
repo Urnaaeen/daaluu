@@ -31,9 +31,18 @@ services:
       PGPASSWORD: ${DB_PASSWORD:-daaluu_change_me}
       # ЗААВАЛ урт санамсаргүй мөр болгоно (.env-д JWT_SECRET=...)
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET тохируулна уу}
-      # Туршилтын үе: QPay-гүй тул "demo" төлбөрөөр зоос авна. Жинхэнэ ашиглалтад false.
+      # Гаднаас хандах хаяг — QPay callback энд ирнэ (https://play.domain.mn)
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:4000}
+      # Туршилтын үе: "demo" товчоор зоос авна. Жинхэнэ ашиглалтад false.
       ALLOW_DEMO_PAYMENTS: ${ALLOW_DEMO_PAYMENTS:-true}
-      QPAY_ENABLED: "false"
+      # QPay: sandbox-оор турших бол QPAY_ENABLED=true + TEST_MERCHANT/123456/TEST_INVOICE
+      # Гэрээ хийсний дараа QPAY_BASE_URL=https://merchant.qpay.mn + мерчант эрх
+      QPAY_ENABLED: ${QPAY_ENABLED:-false}
+      QPAY_BASE_URL: ${QPAY_BASE_URL:-https://merchant-sandbox.qpay.mn}
+      QPAY_USERNAME: ${QPAY_USERNAME:-}
+      QPAY_PASSWORD: ${QPAY_PASSWORD:-}
+      QPAY_INVOICE_CODE: ${QPAY_INVOICE_CODE:-}
+      QPAY_CALLBACK_SECRET: ${QPAY_CALLBACK_SECRET:-}
 
 volumes:
   pgdata:

@@ -42,9 +42,14 @@ export const config = {
   // Хөгжүүлэлтийн "Төлбөр хийсэн (demo)" товч. Production дээр заавал false.
   allowDemoPayments: process.env.ALLOW_DEMO_PAYMENTS === "true",
 
+  // Гаднаас хандах хаяг (https://домэйн) — QPay callback энд ирнэ
+  publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 4000}`,
+
   qpay: {
-    // Мерчант эрх авмагц true болгоно
+    // true бол жинхэнэ QPay (sandbox эсвэл production) руу хандана
     enabled: process.env.QPAY_ENABLED === "true",
+    // Sandbox: https://merchant-sandbox.qpay.mn · Production: https://merchant.qpay.mn
+    baseUrl: (process.env.QPAY_BASE_URL ?? "https://merchant-sandbox.qpay.mn").replace(/\/$/, ""),
     username: process.env.QPAY_USERNAME ?? "",
     password: process.env.QPAY_PASSWORD ?? "",
     invoiceCode: process.env.QPAY_INVOICE_CODE ?? "",
