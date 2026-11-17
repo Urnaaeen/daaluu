@@ -11,12 +11,13 @@ import {
   Text,
   View,
 } from "react-native";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import PushButton from "../components/ui/PushButton";
 import { useAppState, type CoinPack } from "../context/AppStateContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { api, ApiError } from "../lib/api";
-import { MONO, PALETTE } from "../theme/colors";
+import { BLUR_BG, MONO, PALETTE } from "../theme/colors";
 
 type BankUrl = { name: string; scheme: string; link: string };
 
@@ -95,7 +96,8 @@ export default function Coins() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: BLUR_BG }}>
+      <BlurredBackdrop />
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Pressable
@@ -109,8 +111,8 @@ export default function Coins() {
             <Text style={[styles.backText, { color: colors.text }]}>‹</Text>
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.text }]}>Зоос цэнэглэх</Text>
-            <Text style={[styles.sub, { color: colors.muted }]}>Одоо: 🪙 {coins} зоос</Text>
+            <Text style={[styles.title, styles.onBackdrop]}>Зоос цэнэглэх</Text>
+            <Text style={[styles.sub, styles.onBackdropSub]}>Одоо: 🪙 {coins} зоос</Text>
           </View>
         </View>
 
@@ -276,6 +278,15 @@ export default function Coins() {
 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 44, gap: 14 },
+
+  // Бүдгэрсэн зураг дээр шууд байрлах бичиг — сэдвээс үл хамааран цайвар
+  onBackdrop: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  onBackdropSub: { color: "rgba(255,255,255,0.78)" },
 
   pressedDown: { transform: [{ translateY: 2 }] },
 

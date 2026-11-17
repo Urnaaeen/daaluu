@@ -1,0 +1,33 @@
+{
+  "name": "Цай хураах",
+  "short_name": "Цай хураах",
+  "description": "Монгол даалуу — 5 тоглогчтой цай хураах тоглоом.",
+  "lang": "mn",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#20150D",
+  "theme_color": "#20150D",
+  "categories": ["games", "board"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

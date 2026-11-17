@@ -158,8 +158,15 @@ const run = async () => {
   const tsaiTotal = f.players.reduce((s, p) => s + p.tsai, 0);
   console.log(`  ${tsaiTotal === 10 ? "✅" : "❌"} нийт цай 10 хэвээр (${tsaiTotal})`);
 
-  const endOk = f.players.some((p) => p.tsai >= 10 || p.uglug >= 10);
-  console.log(`  ${endOk ? "✅" : "❌"} дуусах нөхцөл биелсэн`);
+  // Төгсгөлийн дүрэм тус бүрийн нөхцөл (endRules.js-тэй нэг мөр)
+  const rule = f.match.endRule;
+  const endOk = {
+    single: maikhans >= 1,
+    hands10: f.match.maikhanNo >= 10,
+    tsai10: f.players.some((p) => p.finalScore >= 10),
+    uglug6: f.players.some((p) => p.uglug >= 6),
+  }[rule] ?? false;
+  console.log(`  ${endOk ? "✅" : "❌"} дуусах нөхцөл биелсэн (${rule})`);
 
   const handsGone = f.players.every((p) => p.tilesLeft === 0);
   console.log(`  ${handsGone ? "✅" : "❌"} нууц гарууд цэвэрлэгдсэн`);

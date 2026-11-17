@@ -17,7 +17,8 @@
     "smoke:presence": "node scripts/presence-smoke.js",
     "smoke:queue": "node scripts/queue-smoke.js",
     "smoke:mm": "node scripts/matchmaking-smoke.js",
-    "smoke:flow": "node scripts/queue-flow-smoke.js"
+    "smoke:flow": "node scripts/queue-flow-smoke.js",
+    "smoke:friends": "node scripts/friends-smoke.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

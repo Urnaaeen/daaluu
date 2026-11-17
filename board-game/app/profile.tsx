@@ -1,11 +1,12 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import Avatar from "../components/ui/Avatar";
 import { useAppState, type HistoryEntry } from "../context/AppStateContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { MONO, PALETTE } from "../theme/colors";
+import { BLUR_BG, MONO, PALETTE } from "../theme/colors";
 
 const MODE_LABEL = { random: "Санамсаргүй", friends: "Найзуудтай" } as const;
 
@@ -55,11 +56,12 @@ export default function Profile() {
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: BLUR_BG }}>
+      <BlurredBackdrop />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
       {/* HEADER */}
       <View style={styles.headerRow}>
         <Pressable
@@ -72,7 +74,7 @@ export default function Profile() {
         >
           <Text style={[styles.backText, { color: colors.text }]}>‹</Text>
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Профайл</Text>
+        <Text style={[styles.title, styles.onBackdrop]}>Профайл</Text>
         <Pressable
           onPress={toggleTheme}
           style={({ pressed }) => [
@@ -101,7 +103,7 @@ export default function Profile() {
 
       {/* NAME EDIT */}
       <View>
-        <Text style={[styles.label, { color: colors.muted }]}>ТОГЛОГЧИЙН НЭР</Text>
+        <Text style={[styles.label, styles.onBackdropSub]}>ТОГЛОГЧИЙН НЭР</Text>
         <View style={styles.nameRow}>
           <TextInput
             value={draft}
@@ -141,7 +143,7 @@ export default function Profile() {
 
       {/* COINS */}
       <View>
-        <Text style={[styles.label, { color: colors.muted }]}>ЗООС</Text>
+        <Text style={[styles.label, styles.onBackdropSub]}>ЗООС</Text>
         <View style={[styles.coinsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View>
             <Text style={styles.coinsValue}>🪙 {coins}</Text>
@@ -174,7 +176,7 @@ export default function Profile() {
 
       {/* HISTORY */}
       <View>
-        <Text style={[styles.label, { color: colors.muted }]}>ТОГЛОСОН ТҮҮХ</Text>
+        <Text style={[styles.label, styles.onBackdropSub]}>ТОГЛОСОН ТҮҮХ</Text>
 
         {history.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.sunken }]}>
@@ -238,11 +240,21 @@ export default function Profile() {
       >
         <Text style={styles.signOutText}>Бүртгэлээс гарах</Text>
       </Pressable>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Бүдгэрсэн зураг дээр шууд байрлах бичиг — сэдвээс үл хамааран цайвар
+  onBackdrop: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  onBackdropSub: { color: "rgba(255,255,255,0.78)" },
+
   container: {
     paddingHorizontal: 22,
     paddingTop: 16,

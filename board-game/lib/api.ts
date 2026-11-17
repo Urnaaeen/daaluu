@@ -3,7 +3,25 @@
  * Токеныг AuthContext эндээс тохируулна — дэлгэцүүд токен барихгүй.
  */
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
+import { Platform } from "react-native";
+
+/**
+ * Серверийн хаяг.
+ *  - Хөгжүүлэлт: .env → EXPO_PUBLIC_API_URL=http://localhost:4000
+ *  - Вэб build-ийг сервер өөрөө үйлчлэх үед: .env.production → "same-origin"
+ *    (хуудас ямар хаягаар нээгдсэн, API ч тэр хаяг дээр — tunnel/домэйн солигдоход засах шаардлагагүй)
+ *  - Утасны build: байршуулсан серверийн https хаяг
+ */
+const resolveApiUrl = () => {
+  const env = (process.env.EXPO_PUBLIC_API_URL ?? "").trim();
+  const sameOrigin = !env || env === "same-origin";
+  if (sameOrigin && Platform.OS === "web" && typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return sameOrigin ? "http://localhost:4000" : env.replace(/\/$/, "");
+};
+
+export const API_URL = resolveApiUrl();
 
 let authToken: string | null = null;
 

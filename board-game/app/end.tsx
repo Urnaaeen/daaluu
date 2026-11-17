@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Confetti from "../components/Confetti";
-import FeltBackdrop from "../components/FeltBackdrop";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import Avatar from "../components/ui/Avatar";
 import PushButton from "../components/ui/PushButton";
 import { useAppState } from "../context/AppStateContext";
@@ -49,7 +49,7 @@ export default function EndScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.feltTop }]}>
-      <FeltBackdrop />
+      <BlurredBackdrop />
       <Confetti />
 
       <View style={styles.banner}>

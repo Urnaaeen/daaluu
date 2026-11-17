@@ -10,10 +10,11 @@ import {
   View,
 } from "react-native";
 import ExitConfirmModal from "../components/ExitConfirmModal";
-import FeltBackdrop from "../components/FeltBackdrop";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import GameSeat from "../components/GameSeat";
 import PauseModal from "../components/PauseModal";
 import PeekModal from "../components/PeekModal";
+import GerIcon from "../components/ui/GerIcon";
 import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
 import { api, ApiError } from "../lib/api";
@@ -205,7 +206,7 @@ export default function MultiplayerGame() {
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.feltTop }]}>
-      <FeltBackdrop />
+      <BlurredBackdrop />
 
       {/* TOP BAR */}
       <View style={styles.topBar}>
@@ -353,7 +354,10 @@ export default function MultiplayerGame() {
 
         <View style={styles.gerChip}>
           <Text style={styles.chipLabel}>ГЭР</Text>
-          <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>🏠 {me?.ger ?? 0}</Text>
+          <View style={styles.gerValueRow}>
+            <GerIcon size={15} />
+            <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>{me?.ger ?? 0}</Text>
+          </View>
         </View>
       </View>
 
@@ -630,6 +634,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     alignItems: "center",
   },
+
+  gerValueRow: { flexDirection: "row", alignItems: "center", gap: 4 },
 
   chipLabel: {
     fontSize: 8,

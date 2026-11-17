@@ -1,5 +1,7 @@
 import cors from "cors";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { config } from "./config.js";
 import { closePool, pool } from "./db.js";
 import { loadTileTypes } from "./game/tiles.js";
@@ -27,6 +29,17 @@ app.use("/api/coins", coinsRouter);
 app.use("/api/rooms", roomsRouter);
 app.use("/api/matches", matchesRouter);
 
+// Апп-ын вэб хувилбар (board-game/dist) — найзууд хөтчөөр шууд тоглоно
+const webDist = path.resolve(config.webDist);
+if (fs.existsSync(path.join(webDist, "index.html"))) {
+  app.use(express.static(webDist, { extensions: ["html"], index: "index.html" }));
+  // /multiplayerGame?matchId=… гэх мэт API биш замыг аппын index рүү
+  app.get(/^\/(?!api\/|socket\.io\/).*/, (req, res) => {
+    res.sendFile(path.join(webDist, "index.html"));
+  });
+  console.log(`🌐 Вэб апп — ${webDist}`);
+}
+
 // Тодорхойгүй зам
 app.use((req, res) => {
   res.status(404).json({ error: "not_found", path: req.path });
@@ -46,7 +59,11 @@ app.use((err, req, res, _next) => {
 
 const server = app.listen(config.port, () => {
   console.log(`🚀 Даалуу API — http://localhost:${config.port}`);
-  console.log(`🐘 Postgres — ${config.db.user}@${config.db.host}:${config.db.port}/${config.db.database}`);
+  console.log(
+    config.db.connectionString
+      ? "🐘 Postgres — DATABASE_URL"
+      : `🐘 Postgres — ${config.db.user}@${config.db.host}:${config.db.port}/${config.db.database}`
+  );
 });
 
 attachRealtime(server);

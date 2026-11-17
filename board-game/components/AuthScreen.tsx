@@ -60,7 +60,8 @@ export default function AuthScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <BlurredBackdrop />
+      {/* Нэвтрэх, бүртгүүлэх дэлгэц сэдвээс үл хамааран nevtreh.png */}
+      <BlurredBackdrop forceLight />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}

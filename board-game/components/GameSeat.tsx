@@ -2,6 +2,7 @@ import { Image as ExpoImage } from "expo-image";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { MONO, PALETTE } from "../theme/colors";
+import GerIcon from "./ui/GerIcon";
 
 /** Суудалд зөвхөн зураг харуулах тул id + image л хангалттай */
 type SeatTile = { id: string; image: any };
@@ -84,7 +85,10 @@ export default function GameSeat({
       <Text style={styles.name} numberOfLines={1}>
         {name}
       </Text>
-      <Text style={styles.ger}>🏠 {ger} гэр</Text>
+      <View style={styles.gerRow}>
+        <GerIcon size={13} />
+        <Text style={styles.ger}>{ger} гэр</Text>
+      </View>
 
       <View style={styles.tileSlot}>
         {played ? (
@@ -182,6 +186,8 @@ const styles = StyleSheet.create({
     maxWidth: 84,
     marginTop: 4,
   },
+
+  gerRow: { flexDirection: "row", alignItems: "center", gap: 3 },
 
   ger: {
     fontSize: 10,

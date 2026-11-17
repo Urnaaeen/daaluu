@@ -3,7 +3,7 @@ import { pool } from "../db.js";
 import { requireAuth } from "../lib/auth.js";
 import { badRequest, wrap } from "../lib/errors.js";
 import { END_RULES, GAMER_UNLOCK_WINS } from "../game/endRules.js";
-import { broadcastMatch } from "../realtime.js";
+import { broadcastMatch, notifyUsers } from "../realtime.js";
 import {
   createMatch,
   getMatchState,
@@ -49,6 +49,26 @@ router.post(
       endRule: String(req.body?.endRule ?? "single"),
     });
     res.status(201).json({ matchId: match.id, status: match.status, endRule: match.end_rule });
+
+    // Найзын өрөө бол гишүүдэд "тоглолт нээгдлээ" гэж мэдэгдэнэ
+    if (match.room_id) {
+      const { rows } = await pool.query(
+        `select m.user_id, r.name as room_name
+           from room_members m join rooms r on r.id = m.room_id
+          where m.room_id = $1 and m.status <> 'removed'`,
+        [match.room_id]
+      );
+      notifyUsers(
+        rows.map((r) => r.user_id),
+        "room:match",
+        {
+          matchId: match.id,
+          roomId: match.room_id,
+          roomName: rows[0]?.room_name ?? "",
+          hostName: req.user.display_name,
+        }
+      );
+    }
   })
 );
 

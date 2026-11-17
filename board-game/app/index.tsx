@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import BlurredBackdrop from "../components/BlurredBackdrop";
+import JoinRoomModal from "../components/JoinRoomModal";
 import { useAppState } from "../context/AppStateContext";
 import { usePresence } from "../context/PresenceContext";
 import { useTheme } from "../context/ThemeContext";
@@ -21,6 +22,7 @@ export default function Menu() {
   const { colors } = useTheme();
   const { playerName, roomPrice } = useAppState();
   const { online, connected } = usePresence();
+  const [joinOpen, setJoinOpen] = useState(false);
 
   const nameInitial = (playerName.trim()[0] ?? "Т").toUpperCase();
 
@@ -88,6 +90,20 @@ export default function Menu() {
           onPress={() => router.push("/roomAdmin")}
           colors={colors}
         />
+
+        {/* Найзын өрөөнд кодоор нэгдэх — өрөө худалдаж авах шаардлагагүй */}
+        <Pressable
+          onPress={() => setJoinOpen(true)}
+          style={({ pressed }) => [
+            styles.joinBtn,
+            { borderColor: colors.border },
+            pressed && styles.pressedDown,
+          ]}
+        >
+          <Text style={[styles.joinBtnText, { color: colors.text }]}>
+            🔑 Найзын өрөөнд кодоор нэгдэх
+          </Text>
+        </Pressable>
       </View>
 
       {/* ЗААВАР */}
@@ -101,6 +117,8 @@ export default function Menu() {
       >
         <Text style={[styles.rulesBtnText, { color: colors.subText }]}>?</Text>
       </Pressable>
+
+      {joinOpen && <JoinRoomModal onClose={() => setJoinOpen(false)} />}
     </View>
   );
 }
@@ -243,6 +261,19 @@ const styles = StyleSheet.create({
   menu: {
     gap: 10,
     marginTop: 26,
+  },
+
+  joinBtn: {
+    alignItems: "center",
+    paddingVertical: 13,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderStyle: "dashed",
+  },
+
+  joinBtnText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
 
   modeCard: {

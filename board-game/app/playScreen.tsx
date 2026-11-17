@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import ExitConfirmModal from "../components/ExitConfirmModal";
-import FeltBackdrop from "../components/FeltBackdrop";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import GameEndModal from "../components/GameEndModal";
 import GameSeat from "../components/GameSeat";
 import HistoryDrawer, { type HistoryRound } from "../components/HistoryDrawer";
 import PauseModal from "../components/PauseModal";
 import PeekModal from "../components/PeekModal";
 import SocialPanel from "../components/SocialPanel";
+import GerIcon from "../components/ui/GerIcon";
 import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
 import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
@@ -433,7 +434,7 @@ export default function PlayScreen() {
         if (newRoundMoves.length === 5) {
             console.log("✅ 5 тоглогч дууслаа, оноо тооцож байна...");
             setTimeout(() => {
-                calculateRoundScore(newHands)
+                calculateRoundScore(newHands, newRoundMoves)
             }, 2000);
             return;
         }
@@ -534,7 +535,7 @@ export default function PlayScreen() {
 
         if (newRoundMoves.length === 5) {
             setTimeout(() => {
-                calculateRoundScore(newHands)
+                calculateRoundScore(newHands, newRoundMoves)
             }, 3000);
             return;
         }
@@ -544,7 +545,13 @@ export default function PlayScreen() {
         }, 800);
     };
 
-    const calculateRoundScore = (currentHands: TileInstance[][]) => {
+    // moves-ыг ЗААВАЛ дуудагчаас нь дамжуулна. setRoundMoves() шууд
+    // тусдаггүй тул closure доторх roundMoves нь сүүлийн тоглогчийн модыг
+    // агуулдаггүй — ялагч бодох, түүх бүртгэх хоёулаа алдаатай болдог байв.
+    const calculateRoundScore = (
+        currentHands: TileInstance[][],
+        moves: { playerIndex: number; tiles: TileInstance[] }[]
+    ) => {
         console.log("💰 calculateRoundScore() дуудагдлаа");
 
         if (!roundInProgress) {
@@ -552,7 +559,7 @@ export default function PlayScreen() {
             return;
         }
 
-        if (roundMoves.length === 0) {
+        if (moves.length === 0) {
             console.log("⚠️ RoundMoves хоосон, алгасав");
             return;
         }
@@ -565,7 +572,7 @@ export default function PlayScreen() {
         let maxRank = -999;
         let winnerIndex = -1;
 
-        for (const move of roundMoves) {
+        for (const move of moves) {
             const tiles = move.tiles;
 
             const isActualPair = tiles.length === 2 && tiles[0].typeId === tiles[1].typeId;
@@ -605,7 +612,7 @@ export default function PlayScreen() {
             return;
         }
 
-        const winnerMove = roundMoves.find(m => m.playerIndex === winnerIndex);
+        const winnerMove = moves.find(m => m.playerIndex === winnerIndex);
         const isPairRound = winnerMove && winnerMove.tiles.length === 2 &&
             winnerMove.tiles[0].typeId === winnerMove.tiles[1].typeId;
         const scoreToAdd = isPairRound ? 2 : 1;
@@ -614,7 +621,7 @@ export default function PlayScreen() {
 
         // Гарын түүхэд бүртгэх
         const playedBySeat: (TileInstance[] | null)[] = [0, 1, 2, 3, 4].map(
-            seat => roundMoves.find(m => m.playerIndex === seat)?.tiles ?? null
+            seat => moves.find(m => m.playerIndex === seat)?.tiles ?? null
         );
         setHistory(prev => [...prev, { winner: winnerIndex, plays: playedBySeat }]);
 
@@ -949,7 +956,7 @@ export default function PlayScreen() {
 
     return (
         <View style={[styles.safe, { backgroundColor: colors.feltTop }]}>
-            <FeltBackdrop />
+            <BlurredBackdrop />
 
             {/* TOP BAR */}
             <View style={styles.topBar}>
@@ -1124,7 +1131,10 @@ export default function PlayScreen() {
 
                 <View style={styles.gerChip}>
                     <Text style={styles.chipLabel}>ГЭР</Text>
-                    <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>🏠 {myScore.stars}</Text>
+                    <View style={styles.gerValueRow}>
+                        <GerIcon size={15} />
+                        <Text style={[styles.chipValue, { color: PALETTE.yellow }]}>{myScore.stars}</Text>
+                    </View>
                 </View>
             </View>
 
@@ -1536,6 +1546,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         alignItems: "center",
     },
+
+    gerValueRow: { flexDirection: "row", alignItems: "center", gap: 4 },
 
     chipLabel: {
         fontSize: 8,

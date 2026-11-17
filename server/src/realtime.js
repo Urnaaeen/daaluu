@@ -27,6 +27,12 @@ export const broadcastQueue = () => {
 /** Хэрэглэгч тус бүрийн хувийн өрөө — нэрлэн дуудахад ашиглана */
 const userRoom = (userId) => `user:${userId}`;
 
+/** Тодорхой хэрэглэгчид рүү (бүх төхөөрөмж нь) үйл явдал илгээнэ */
+export const notifyUsers = (userIds, event, payload) => {
+  if (!io) return;
+  for (const id of userIds) io.to(userRoom(id)).emit(event, payload);
+};
+
 /**
  * Дараалал бүрдсэн эсэхийг шалгаж, бүрдсэн бол тоглолт үүсгэнэ.
  * Дарааллыг ЭХЛЭЭД синхроноор хоослоно — тэгснээр зэрэг ирсэн
@@ -205,9 +211,16 @@ export const attachRealtime = (server) => {
 
     socket.on("match:join", async (matchId, ack) => {
       try {
-        // Төлөв уншиж чадаж байвал л өрөөнд оруулна
-        const state = await getMatchState(pool, matchId, socket.data.userId);
+        // Өрөөнд ЭХЛЭЭД оруулна — уншиж байх хооронд болсон өөрчлөлтийн
+        // broadcast алдагдахгүй. Унших эрхгүй бол буцааж гаргана.
         socket.join(roomOf(matchId));
+        let state;
+        try {
+          state = await getMatchState(pool, matchId, socket.data.userId);
+        } catch (err) {
+          socket.leave(roomOf(matchId));
+          throw err;
+        }
         socket.emit("match:state", state);
         ack?.({ ok: true });
       } catch (err) {

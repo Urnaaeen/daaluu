@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import FeltBackdrop from "../components/FeltBackdrop";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
 import { api, ApiError } from "../lib/api";
@@ -64,7 +64,7 @@ export default function Setup() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.feltTop }]}>
-      <FeltBackdrop />
+      <BlurredBackdrop />
 
       <View style={styles.headerRow}>
         <Pressable

@@ -8,9 +8,10 @@ import {
   Text,
   View,
 } from "react-native";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
-import { MONO } from "../theme/colors";
+import { BLUR_BG, MONO } from "../theme/colors";
 import ChatModule, { type ChatModuleRef } from "./ask";
 
 type TabKey = "gunshin" | "rules" | "score";
@@ -75,7 +76,8 @@ export default function Rules() {
   const chatModuleRef = useRef<ChatModuleRef>(null);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: BLUR_BG }}>
+      <BlurredBackdrop />
       {/* HEADER */}
       <View style={styles.headerWrap}>
         <View style={styles.headerRow}>
@@ -90,8 +92,8 @@ export default function Rules() {
             <Text style={[styles.backBtnText, { color: colors.text }]}>‹</Text>
           </Pressable>
           <View>
-            <Text style={[styles.header, { color: colors.text }]}>Тоглоомын заавар</Text>
-            <Text style={[styles.headerSub, { color: colors.muted }]}>
+            <Text style={[styles.header, styles.onBackdrop]}>Тоглоомын заавар</Text>
+            <Text style={[styles.headerSub, styles.onBackdropSub]}>
               5 тоглогч · ганцаарчилсан стратеги
             </Text>
           </View>
@@ -203,6 +205,15 @@ export default function Rules() {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
+  // Бүдгэрсэн зураг дээр шууд байрлах бичиг — сэдвээс үл хамааран цайвар
+  onBackdrop: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  onBackdropSub: { color: "rgba(255,255,255,0.78)" },
+
   headerWrap: {
     paddingHorizontal: 20,
     paddingTop: 12,

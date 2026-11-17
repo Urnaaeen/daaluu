@@ -1,0 +1,39 @@
+# Нэг командоор бүхнийг асаана:  docker compose up -d --build
+# Дараа нь http://localhost:4000 (эсвэл серверийн домэйн)
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: daaluu
+      POSTGRES_USER: daaluu
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-daaluu_change_me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daaluu -d daaluu"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: daaluu
+      PGUSER: daaluu
+      PGPASSWORD: ${DB_PASSWORD:-daaluu_change_me}
+      # ЗААВАЛ урт санамсаргүй мөр болгоно (.env-д JWT_SECRET=...)
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET тохируулна уу}
+      # Туршилтын үе: QPay-гүй тул "demo" төлбөрөөр зоос авна. Жинхэнэ ашиглалтад false.
+      ALLOW_DEMO_PAYMENTS: ${ALLOW_DEMO_PAYMENTS:-true}
+      QPAY_ENABLED: "false"
+
+volumes:
+  pgdata:

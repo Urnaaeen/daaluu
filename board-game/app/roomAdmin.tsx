@@ -10,11 +10,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import Avatar from "../components/ui/Avatar";
 import PushButton from "../components/ui/PushButton";
 import { useAppState, type RoomMember } from "../context/AppStateContext";
 import { useTheme } from "../context/ThemeContext";
-import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
+import { BLUR_BG, AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
 
 export default function RoomAdmin() {
   const router = useRouter();
@@ -80,7 +81,9 @@ export default function RoomAdmin() {
   };
 
   const lobbyCount = 1 + members.length;
-  const ready = members.length >= 4;
+  // 1 найз байхад л нээж болно — хоосон суудлыг сервер ботоор нөхнө
+  const ready = members.length >= 1;
+  const full = members.length >= 4;
 
   // Хост + уригдсан гишүүд + хоосон суудлууд
   const slots = [
@@ -117,7 +120,8 @@ export default function RoomAdmin() {
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: BLUR_BG }}>
+      <BlurredBackdrop />
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => router.back()}
@@ -130,8 +134,8 @@ export default function RoomAdmin() {
           <Text style={[styles.backText, { color: colors.text }]}>‹</Text>
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.text }]}>Миний өрөөнүүд</Text>
-          <Text style={[styles.sub, { color: colors.muted }]}>
+          <Text style={[styles.title, styles.onBackdrop]}>Миний өрөөнүүд</Text>
+          <Text style={[styles.sub, styles.onBackdropSub]}>
             Найзуудтайгаа тоглох хаалттай өрөө
           </Text>
         </View>
@@ -294,7 +298,7 @@ export default function RoomAdmin() {
                   </View>
 
                   <PushButton
-                    label={ready ? "Тоглоом эхлүүлэх" : "Тоглогч хүлээж байна"}
+                    label={ready ? "Тоглолт нээх" : "Найзаа урина уу"}
                     color={ready ? PALETTE.green : colors.sunken}
                     shadowColor={ready ? PALETTE.greenDark : "transparent"}
                     textColor={ready ? "#fff" : colors.muted}
@@ -307,8 +311,10 @@ export default function RoomAdmin() {
                   />
                   <Text style={[styles.startHint, { color: colors.muted }]}>
                     {ready
-                      ? "Бүгд бүрдлээ · эхлүүлэх боломжтой"
-                      : `${4 - members.length} тоглогч дутуу · ID-гаар урь`}
+                      ? full
+                        ? "Бүгд бүрдлээ · эхлүүлэх боломжтой"
+                        : `Найзуудад урилга очно · хоосон ${4 - members.length} суудлыг бот нөхнө`
+                      : `Найзууддаа өрөөний код ${room.code}-г өг, эсвэл ID-гаар урь`}
                   </Text>
 
                   <Pressable onPress={() => setExpanded(null)} style={styles.collapseBtn}>
@@ -404,6 +410,15 @@ const styles = StyleSheet.create({
   coinPillText: { fontSize: 12, fontWeight: "800", color: PALETTE.gold },
 
   list: { paddingHorizontal: 22, paddingBottom: 44, gap: 10 },
+
+  // Бүдгэрсэн зураг дээр шууд байрлах бичиг — сэдвээс үл хамааран цайвар
+  onBackdrop: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  onBackdropSub: { color: "rgba(255,255,255,0.78)" },
 
   loadingBox: { paddingVertical: 30, alignItems: "center" },
   emptyBox: { padding: 16, borderRadius: 18 },

@@ -23,7 +23,15 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Цай хураах",
+      "shortName": "Цай хураах",
+      "lang": "mn",
+      "description": "Монгол даалуу — 5 тоглогчтой цай хураах тоглоом.",
+      "display": "standalone",
+      "orientation": "portrait",
+      "themeColor": "#20150D",
+      "backgroundColor": "#20150D"
     },
     "plugins": [
       "expo-router",

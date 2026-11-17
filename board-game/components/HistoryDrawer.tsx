@@ -67,17 +67,30 @@ export default function HistoryDrawer({ visible, onClose, rounds, names }: Histo
                           style={[styles.entry, { opacity: seat === round.winner ? 1 : 0.55 }]}
                         >
                           {tiles && tiles.length > 0 ? (
-                            <ExpoImage
-                              source={tiles[0].image}
+                            // Хосоор тоглосон бол хоёуланг нь давхарлаж харуулна
+                            <View style={styles.entryTiles}>
+                              {tiles.map((t, i) => (
+                                <ExpoImage
+                                  key={`${t.id}_${i}`}
+                                  source={t.image}
+                                  style={[
+                                    styles.entryTile,
+                                    i > 0 && styles.entryTileSecond,
+                                    seat === round.winner && styles.entryTileWin,
+                                  ]}
+                                  contentFit="contain"
+                                  cachePolicy="memory-disk"
+                                />
+                              ))}
+                            </View>
+                          ) : (
+                            <View
                               style={[
                                 styles.entryTile,
-                                seat === round.winner && styles.entryTileWin,
+                                styles.entryTileEmpty,
+                                { borderColor: colors.border },
                               ]}
-                              contentFit="contain"
-                              cachePolicy="memory-disk"
                             />
-                          ) : (
-                            <View style={[styles.entryTile, { borderWidth: 1, borderColor: colors.border }]} />
                           )}
                           <Text style={[styles.entryOwner, { color: colors.muted }]} numberOfLines={1}>
                             {names[seat] ?? ""}
@@ -141,7 +154,15 @@ const styles = StyleSheet.create({
   entries: { flexDirection: "row", gap: 6, marginTop: 8 },
   entry: { flex: 1, alignItems: "center", gap: 3 },
 
+  entryTiles: { flexDirection: "row", alignItems: "center" },
+
   entryTile: { width: 30, height: 46, borderRadius: 4 },
+
+  // Хосын хоёр дахь мод — багахан цухуйж харагдана
+  entryTileSecond: { marginLeft: -19 },
+
+  entryTileEmpty: { borderWidth: 1, borderStyle: "dashed" },
+
   entryTileWin: { borderWidth: 2, borderColor: PALETTE.yellow },
 
   entryOwner: { fontSize: 8, fontWeight: "700", maxWidth: 44 },

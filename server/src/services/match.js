@@ -108,6 +108,23 @@ export const joinMatch = ({ matchId, userId }) =>
     const mine = players.find((p) => p.user_id === userId);
     if (mine) return { match, seat: mine.seat };
 
+    // Найзын тоглолтод зөвхөн өрөөний гишүүд (кодоор нэгдсэн эсвэл уригдсан) орно
+    if (match.mode === "friends") {
+      const member = await client.query(
+        `select 1 from room_members
+          where room_id = $1 and user_id = $2 and status <> 'removed'`,
+        [match.room_id, userId]
+      );
+      if (!member.rows.length) {
+        throw forbidden("not_room_member", "Та энэ өрөөний гишүүн биш байна. Өрөөний кодоор нэгдэнэ үү.");
+      }
+      await client.query(
+        `update room_members set status = 'joined', joined_at = coalesce(joined_at, now())
+          where room_id = $1 and user_id = $2`,
+        [match.room_id, userId]
+      );
+    }
+
     const taken = new Set(players.map((p) => p.seat));
     const seat = [0, 1, 2, 3, 4].find((s) => !taken.has(s));
     if (seat === undefined) throw badRequest("match_full", "Тоглолт дүүрсэн байна.");

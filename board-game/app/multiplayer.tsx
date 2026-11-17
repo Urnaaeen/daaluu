@@ -1,12 +1,13 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import BlurredBackdrop from "../components/BlurredBackdrop";
 import Avatar from "../components/ui/Avatar";
 import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
 import { api, ApiError } from "../lib/api";
 import { subscribeToMatch, type MatchState } from "../lib/socket";
-import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
+import { BLUR_BG, AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
 
 export default function Lobby() {
   const router = useRouter();
@@ -22,6 +23,8 @@ export default function Lobby() {
   const [state, setState] = useState<MatchState | null>(null);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  // Суудалд суусны ДАРАА л realtime-д нэгдэнэ — эс бөгөөс суухаас өмнөх хуучин төлөв ирдэг
+  const [seated, setSeated] = useState(false);
   const created = useRef(false);
 
   // Тоглолт үүсгэх (эсвэл өгөгдсөнд нэгдэх)
@@ -33,6 +36,7 @@ export default function Lobby() {
       try {
         if (matchId) {
           await api(`/matches/${matchId}/join`, { method: "POST" });
+          setSeated(true);
           return;
         }
         const res = await api<{ matchId: string }>("/matches", {
@@ -40,6 +44,7 @@ export default function Lobby() {
           body: { mode, roomId, turnSeconds: 20 },
         });
         setMatchId(res.matchId);
+        setSeated(true);
       } catch (e) {
         setError(e instanceof ApiError ? e.message : "Тоглолт үүсгэж чадсангүй.");
       }
@@ -48,9 +53,9 @@ export default function Lobby() {
 
   // Realtime төлөв
   useEffect(() => {
-    if (!matchId) return;
+    if (!matchId || !seated) return;
     return subscribeToMatch(matchId, setState);
-  }, [matchId]);
+  }, [matchId, seated]);
 
   // Тоглоом эхлэхэд ширээ рүү шилжинэ
   useEffect(() => {
@@ -102,7 +107,8 @@ export default function Lobby() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: BLUR_BG }]}>
+      <BlurredBackdrop />
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => router.back()}
@@ -115,8 +121,8 @@ export default function Lobby() {
           <Text style={[styles.backBtnText, { color: colors.text }]}>‹</Text>
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.text }]}>Хүлээх өрөө</Text>
-          <Text style={[styles.roomCode, { color: colors.muted }]}>
+          <Text style={[styles.title, styles.onBackdrop]}>Хүлээх өрөө</Text>
+          <Text style={[styles.roomCode, styles.onBackdropSub]}>
             {mode === "friends" ? "Найзуудтай" : "Санамсаргүй"} · {state.match.id.slice(0, 8)}
           </Text>
         </View>
@@ -208,7 +214,7 @@ export default function Lobby() {
             pressed && styles.pressedDown,
           ]}
         >
-          <Text style={[styles.leaveBtnText, { color: colors.muted }]}>Өрөөнөөс гарах</Text>
+          <Text style={[styles.leaveBtnText, styles.onBackdropSub]}>Өрөөнөөс гарах</Text>
         </Pressable>
       </View>
     </View>
@@ -216,6 +222,15 @@ export default function Lobby() {
 }
 
 const styles = StyleSheet.create({
+  // Бүдгэрсэн зураг дээр шууд байрлах бичиг — сэдвээс үл хамааран цайвар
+  onBackdrop: {
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  onBackdropSub: { color: "rgba(255,255,255,0.78)" },
+
   container: { flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 24 },
 
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },

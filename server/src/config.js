@@ -13,18 +13,28 @@ const required = (name) => {
 export const config = {
   port: Number(process.env.PORT ?? 4000),
 
-  db: {
-    host: process.env.PGHOST ?? "localhost",
-    port: Number(process.env.PGPORT ?? 5432),
-    database: required("PGDATABASE"),
-    user: required("PGUSER"),
-    password: process.env.PGPASSWORD ?? "",
-  },
+  // Cloud (Neon, Render, Railway…) дээр ганц DATABASE_URL өгдөг — байвал түүнийг ашиглана
+  db: process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.PGSSL === "false" ? false : { rejectUnauthorized: false },
+      }
+    : {
+        host: process.env.PGHOST ?? "localhost",
+        port: Number(process.env.PGPORT ?? 5432),
+        database: required("PGDATABASE"),
+        user: required("PGUSER"),
+        password: process.env.PGPASSWORD ?? "",
+      },
+
+  // Апп-ын вэб build (expo export) — байвал сервер өөрөө үйлчилнэ (нэг URL, CORS хэрэггүй)
+  webDist: process.env.WEB_DIST ?? "../board-game/dist",
 
   corsOrigins: (process.env.CORS_ORIGIN ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean),
+    // "*" бол бүх origin-ийг зөвшөөрнө
+    .filter((s) => s && s !== "*"),
 
   jwtSecret: required("JWT_SECRET"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "30d",

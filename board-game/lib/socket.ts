@@ -21,7 +21,8 @@ export const getSocket = (): Socket => {
   if (!socket) {
     socket = io(API_URL, {
       auth: { token },
-      transports: ["websocket"],
+      // websocket-оор эхэлж, хаагдсан сүлжээнд polling руу шилжинэ
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 1000,
     });
@@ -160,5 +161,23 @@ export const subscribeToMatch = (
     s.off("match:state", handleState);
     s.off("connect", join);
     s.emit("match:leave", matchId);
+  };
+};
+
+/* ─────────── Найзын өрөөний урилга ─────────── */
+
+export type RoomMatchEvent = {
+  matchId: string;
+  roomId: string;
+  roomName: string;
+  hostName: string;
+};
+
+/** Миний гишүүн болсон өрөөнд хост тоглолт нээхэд дуудагдана */
+export const subscribeToRoomMatch = (onEvent: (e: RoomMatchEvent) => void): (() => void) => {
+  const s = getSocket();
+  s.on("room:match", onEvent);
+  return () => {
+    s.off("room:match", onEvent);
   };
 };
