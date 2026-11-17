@@ -1,0 +1,26 @@
+# Render Blueprint — тоглоомын сервер (API + Socket.IO).
+# Вэб интерфэйс Vercel дээр (board-game/vercel.json).
+services:
+  - type: web
+    name: daaluu-server
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL # Neon-ийн connection string-ийг Render дээр өөрөө тавина
+        sync: false
+      - key: CORS_ORIGIN # Vercel-ийн хаяг, жишээ нь https://daaluu.vercel.app
+        sync: false
+      - key: PUBLIC_URL # энэ серверийн хаяг, жишээ нь https://daaluu-server.onrender.com
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: QPAY_CALLBACK_SECRET
+        generateValue: true
+      - key: ALLOW_DEMO_PAYMENTS
+        value: "true"
+      - key: QPAY_ENABLED
+        value: "false"
