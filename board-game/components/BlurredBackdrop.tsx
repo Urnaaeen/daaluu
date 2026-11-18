@@ -1,6 +1,7 @@
 import { Image as ExpoImage } from "expo-image";
-import React from "react";
-import { StyleSheet, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback } from "react";
+import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 
@@ -8,6 +9,22 @@ import { useTheme } from "../context/ThemeContext";
 // 720px өргөнтэй JPEG (эх PNG нь 2.5 MB тутам байсан)
 const DARK = require("../assets/zurag/menu-bg.jpg");
 const LIGHT = require("../assets/zurag/nevtreh-bg.jpg");
+
+// Вэб: html-ийн дэвсгэр (public/bg/*-blur.jpg — урьдчилан бүдгэрүүлсэн).
+// Апп-ын харагдах хэсгээс гадуурх зурваст (iOS PWA-ийн home indicator,
+// Android-ийн навигацийн самбар) энэ л харагдана.
+const PAGE_BG = {
+  dark: { url: "/bg/menu-blur.jpg", color: "#3a1d0e" },
+  light: { url: "/bg/nevtreh-blur.jpg", color: "#3b1709" },
+};
+
+const setPageBackdrop = (isDark: boolean, veil: number) => {
+  if (Platform.OS !== "web" || typeof document === "undefined") return;
+  const bg = isDark ? PAGE_BG.dark : PAGE_BG.light;
+  const st = document.documentElement.style;
+  st.backgroundColor = bg.color;
+  st.backgroundImage = `linear-gradient(rgba(12,8,4,${veil}), rgba(12,8,4,${veil})), url(${bg.url})`;
+};
 
 /**
  * Аппын нэгдсэн дэвсгэр — бүх дэлгэцэд хэрэглэнэ.
@@ -32,6 +49,13 @@ export default function BlurredBackdrop({
   const insets = useSafeAreaInsets();
   const isDark = !forceLight && theme === "dark";
   const veil = scrim ?? (isDark ? 0.5 : 0.45);
+
+  // Идэвхтэй дэлгэцийн дэвсгэрийг html дээр давхар тавина
+  useFocusEffect(
+    useCallback(() => {
+      setPageBackdrop(isDark, veil);
+    }, [isDark, veil])
+  );
 
   // blur нь зургийн ирмэгийг бараан болгодог тул тэр хэсгийг дэлгэцээс гадна гаргана
   const edge = blurRadius * 4;

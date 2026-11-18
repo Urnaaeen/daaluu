@@ -43,7 +43,7 @@ function Shell() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ flex: 1, backgroundColor: Platform.OS === "web" ? "transparent" : bg, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
@@ -55,7 +55,8 @@ function Shell() {
     <View
       style={{
         flex: 1,
-        backgroundColor: bg,
+        // Вэб дээр html-ийн бүдгэрсэн зураг ил харагдана (ачаалах үед ч)
+        backgroundColor: Platform.OS === "web" ? "transparent" : bg,
         paddingTop: insets.top,
         paddingBottom: insets.bottom,
         paddingLeft: insets.left,

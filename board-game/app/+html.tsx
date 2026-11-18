@@ -71,19 +71,32 @@ if ("serviceWorker" in navigator) {
 `;
 
 const BASE_CSS = `
-/* Ачаалахаас өмнөх цагаан анивчилтыг арилгана */
-html, body { background-color: #20150D; }
-
-/* Бүтэн дэлгэц: хаягийн мөр гарч/алга болоход ч яг харагдах өндөр (dvh).
-   100vh нь iOS дээр хаягийн мөрийн ард орж, доод хэсэг таслагддаг. */
-html, body, #root { width: 100%; height: 100%; margin: 0; }
-@supports (height: 100dvh) {
-  html, body, #root { height: 100dvh; }
+/* ── Бүтэн дэлгэцийн дэвсгэр (edge-to-edge) ──
+   iOS-ийн суулгасан PWA, Android-ийн навигацийн самбар зэрэгт апп-ын харагдах
+   хэсэг физик дэлгэцээс богино байж болно. Тэр зурваст зөвхөн html-ийн дэвсгэр
+   харагддаг тул бүдгэрүүлсэн зургийг (BlurredBackdrop-той ижил) энд тавина.
+   Өнгө нь зургийн доод ирмэгийн өнгө — зураг хүрэхгүй газар ч ялгаа харагдахгүй.
+   Апп ажиллаж эхлэхэд BlurredBackdrop дэлгэцийн сэдвийн дагуу шинэчилнэ. */
+html {
+  background-color: #3a1d0e;
+  background-image: linear-gradient(rgba(12,8,4,0.5), rgba(12,8,4,0.5)), url(/bg/menu-blur.jpg);
+  background-position: center bottom;
+  background-size: cover;
+  background-repeat: no-repeat;
+  /* Дэвсгэрийн хайрцгийг safe area-аар ТОМРУУЛНА (хэзээ ч багасгахгүй) */
+  min-height: calc(100% + env(safe-area-inset-top) + env(safe-area-inset-bottom));
 }
-/* iOS-ийн суулгасан PWA (black-translucent) дээр 100%/dvh нь status bar-ын
-   хэмжээгээр богино тооцогдож доод талд зай үлдээдэг — fixed + inset:0 нь
-   яг физик дэлгэцийг хучна */
-#root { position: fixed; top: 0; right: 0; bottom: 0; left: 0; height: auto; }
+html, body { margin: 0; padding: 0; height: auto; }
+body { min-height: 100%; background: transparent; }
+
+/* Апп-ын root нь бүтэн дэлгэцэд тогтоно — өндөр, margin үлдээхгүй.
+   Safe area-г зөвхөн дотоод UI padding-аар (root layout) авна. */
+#root {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  width: auto; height: auto; margin: 0;
+  background: transparent;
+}
 
 /* Тоглоомын дунд хуудас чирэгдэж, дахин ачаалахаас сэргийлнэ */
 html, body {
