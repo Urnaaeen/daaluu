@@ -1006,6 +1006,7 @@ export default function PlayScreen() {
                 </Pressable>
             </View>
 
+            <View style={styles.spread} />
             {/* TOP SEATS (2, 3) */}
             <View style={styles.topSeats}>
                 {seatFor(2)}
@@ -1090,6 +1091,7 @@ export default function PlayScreen() {
                 )}
             </View>
 
+            <View style={styles.spread} />
             {/* MY ROW: AVATAR + STATS */}
             <View style={styles.myRow}>
                 <View
@@ -1192,6 +1194,7 @@ export default function PlayScreen() {
                 )}
             </View>
 
+            <View style={styles.spread} />
             {/* MY HAND */}
             <View style={styles.handWrap}>
                 <FlatList
@@ -1294,6 +1297,10 @@ export default function PlayScreen() {
 }
 
 const styles = StyleSheet.create({
+    // Өндөр дэлгэцэд (19.5:9+) илүү зайг суудал, гол хэсэг, доод удирдлагын
+    // хооронд тараана. Намхан дэлгэцэд 0 болж агшина.
+    spread: { flexGrow: 0.22, flexShrink: 1, flexBasis: 0 },
+
     safe: {
         flex: 1,
         paddingTop: 8,
@@ -1351,7 +1358,11 @@ const styles = StyleSheet.create({
     },
 
     middleRow: {
-        flex: 1,
+        // Агуулгынхаа өндрөөс эхэлнэ — илүү зайг spread-үүдтэй хуваана,
+        // намхан дэлгэцэд агшина
+        flexGrow: 1,
+        flexShrink: 1,
+        flexBasis: "auto",
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: 12,

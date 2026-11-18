@@ -58,6 +58,13 @@ const BASE_CSS = `
 /* Ачаалахаас өмнөх цагаан анивчилтыг арилгана */
 html, body { background-color: #20150D; }
 
+/* Бүтэн дэлгэц: хаягийн мөр гарч/алга болоход ч яг харагдах өндөр (dvh).
+   100vh нь iOS дээр хаягийн мөрийн ард орж, доод хэсэг таслагддаг. */
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+
 /* Тоглоомын дунд хуудас чирэгдэж, дахин ачаалахаас сэргийлнэ */
 html, body {
   overscroll-behavior: none;

@@ -252,6 +252,7 @@ export default function MultiplayerGame() {
         </View>
       </View>
 
+      <View style={styles.spread} />
       {/* ДЭЭД СУУДЛУУД */}
       <View style={styles.topSeats}>
         {seatFor(ordered[1])}
@@ -320,6 +321,7 @@ export default function MultiplayerGame() {
         )}
       </View>
 
+      <View style={styles.spread} />
       {/* МИНИЙ МӨР */}
       <View style={styles.myRow}>
         <View
@@ -396,6 +398,7 @@ export default function MultiplayerGame() {
         )}
       </View>
 
+      <View style={styles.spread} />
       {/* МИНИЙ ГАР */}
       <View style={styles.handWrap}>
         <FlatList
@@ -476,6 +479,9 @@ export default function MultiplayerGame() {
 }
 
 const styles = StyleSheet.create({
+  // Өндөр дэлгэцэд илүү зайг хэсгүүдийн хооронд тараана; намхан дэлгэцэд 0
+  spread: { flexGrow: 0.22, flexShrink: 1, flexBasis: 0 },
+
   safe: { flex: 1, paddingTop: 8, paddingBottom: 12 },
 
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
@@ -525,7 +531,7 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
 
-  middleRow: { flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 },
+  middleRow: { flexGrow: 1, flexShrink: 1, flexBasis: "auto", flexDirection: "row", alignItems: "center", paddingHorizontal: 12 },
 
   centerArea: {
     flex: 1,

@@ -1,7 +1,8 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { ActivityIndicator, Platform, SafeAreaView, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import OfflineBanner from "../components/OfflineBanner";
 import RoomInviteBanner from "../components/RoomInviteBanner";
 import { AppStateProvider } from "../context/AppStateContext";
@@ -18,6 +19,8 @@ function Shell() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+
+  const insets = useSafeAreaInsets();
 
   const route = segments[0] ?? "";
   const onAuthRoute = AUTH_ROUTES.includes(route);
@@ -47,7 +50,18 @@ function Shell() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+    // Edge-to-edge: агуулга safe area дотор, харин дэлгэц бүрийн дэвсгэр
+    // (BlurredBackdrop) энэ padding-аас гадагш сунаж бүтэн дэлгэцийг хучна.
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: bg,
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}
+    >
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -59,7 +73,7 @@ function Shell() {
       />
       {user && <RoomInviteBanner />}
       <OfflineBanner />
-    </SafeAreaView>
+    </View>
   );
 }
 
