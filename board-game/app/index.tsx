@@ -118,6 +118,11 @@ export default function Menu() {
         <Text style={[styles.rulesBtnText, { color: colors.subText }]}>?</Text>
       </Pressable>
 
+      {/* Хувилбар — утсанд шинэчлэлт хүрсэн эсэхийг шалгахад */}
+      <Text style={styles.buildId} pointerEvents="none">
+        v{(process.env.EXPO_PUBLIC_BUILD_ID || "dev").slice(0, 7)}
+      </Text>
+
       {joinOpen && <JoinRoomModal onClose={() => setJoinOpen(false)} />}
     </View>
   );
@@ -183,6 +188,14 @@ function ModeCard({
 /* ========== STYLES ========== */
 
 const styles = StyleSheet.create({
+  buildId: {
+    position: "absolute",
+    right: 16,
+    bottom: 10,
+    fontSize: 10,
+    color: "rgba(255,255,255,0.35)",
+  },
+
   container: {
     flex: 1,
     paddingHorizontal: 24,

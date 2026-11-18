@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "export:web": "expo export --platform web && node scripts/build-sw.mjs"
+    "export:web": "expo export --platform web --clear && node scripts/build-sw.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

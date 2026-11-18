@@ -48,8 +48,24 @@ export default function Root({ children }: PropsWithChildren) {
 const SW_REGISTER = `
 // Expo dev server дээр sw.js байхгүй тул бүртгэл чимээгүй алгасагдана
 if ("serviceWorker" in navigator) {
+  // Шинэ хувилбарын SW идэвхжмэгц хуучин JS-тэй үлдэхгүйн тулд нэг удаа дахин ачаална.
+  // Анх суулгах үед (өмнө нь controller байгаагүй) дахин ачаалахгүй.
+  var hadController = !!navigator.serviceWorker.controller;
+  var reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", function () {
+    // Анхны суулгалт: хуудас SW-ийн хяналтад орлоо гэж тэмдэглээд л өнгөрнө
+    if (!hadController) { hadController = true; return; }
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  });
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("/sw.js").catch(function () {});
+    navigator.serviceWorker.register("/sw.js").then(function (reg) {
+      // Апп-ыг дахин нээх / буцаж ирэх бүрт шинэ хувилбар шалгана
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible") reg.update().catch(function () {});
+      });
+    }).catch(function () {});
   });
 }
 `;
@@ -64,6 +80,10 @@ html, body, #root { width: 100%; height: 100%; margin: 0; }
 @supports (height: 100dvh) {
   html, body, #root { height: 100dvh; }
 }
+/* iOS-ийн суулгасан PWA (black-translucent) дээр 100%/dvh нь status bar-ын
+   хэмжээгээр богино тооцогдож доод талд зай үлдээдэг — fixed + inset:0 нь
+   яг физик дэлгэцийг хучна */
+#root { position: fixed; top: 0; right: 0; bottom: 0; left: 0; height: auto; }
 
 /* Тоглоомын дунд хуудас чирэгдэж, дахин ачаалахаас сэргийлнэ */
 html, body {
