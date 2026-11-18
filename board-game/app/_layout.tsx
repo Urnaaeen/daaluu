@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { ActivityIndicator, Platform, SafeAreaView, View } from "react-native";
+import OfflineBanner from "../components/OfflineBanner";
 import RoomInviteBanner from "../components/RoomInviteBanner";
 import { AppStateProvider } from "../context/AppStateContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -57,6 +58,7 @@ function Shell() {
         }}
       />
       {user && <RoomInviteBanner />}
+      <OfflineBanner />
     </SafeAreaView>
   );
 }

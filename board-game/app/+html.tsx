@@ -37,11 +37,22 @@ export default function Root({ children }: PropsWithChildren) {
 
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: BASE_CSS }} />
+        {/* Оффлайн ажиллуулах Service Worker (production build-д л sw.js байна) */}
+        <script dangerouslySetInnerHTML={{ __html: SW_REGISTER }} />
       </head>
       <body>{children}</body>
     </html>
   );
 }
+
+const SW_REGISTER = `
+// Expo dev server дээр sw.js байхгүй тул бүртгэл чимээгүй алгасагдана
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  });
+}
+`;
 
 const BASE_CSS = `
 /* Ачаалахаас өмнөх цагаан анивчилтыг арилгана */

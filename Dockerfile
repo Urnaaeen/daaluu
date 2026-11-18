@@ -9,7 +9,7 @@ RUN npm ci --no-audit --no-fund
 COPY board-game/ ./
 # API нь хуудас нээгдсэн хаяг дээр (process.env нь .env файлаас давуу)
 ENV EXPO_PUBLIC_API_URL=same-origin
-RUN npx expo export --platform web --output-dir /web/dist
+RUN npx expo export --platform web --output-dir /web/dist && node scripts/build-sw.mjs
 
 # ── 2. API сервер ──
 FROM node:22-slim
