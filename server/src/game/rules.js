@@ -91,7 +91,7 @@ const validateFollow = (hand, tiles, lead) => {
  * Хөдөлгөөнийг бүрэн шалгана.
  * @returns { ok: true, tiles, isSecret } эсвэл { ok: false, reason }
  */
-export const validateMove = ({ hand, tileIds, lead }) => {
+export const validateMove = ({ hand, tileIds, lead, janlii = null }) => {
   if (!Array.isArray(tileIds) || tileIds.length < 1 || tileIds.length > 2) {
     return { ok: false, reason: "Нэг эсвэл хоёр мод сонгоно." };
   }
@@ -106,7 +106,8 @@ export const validateMove = ({ hand, tileIds, lead }) => {
     return { ok: false, reason: "Тухайн мод гарт тань байхгүй байна." };
   }
 
-  const tiles = describeAll(tileIds);
+  // Гар нь janlii-г тооцож describe хийгдсэн — гаргах модыг ч ижлээр
+  const tiles = describeAll(tileIds, janlii);
   if (!tiles) return { ok: false, reason: "Мод танигдахгүй байна." };
 
   const reason = lead ? validateFollow(hand, tiles, lead) : validateLead(tiles);

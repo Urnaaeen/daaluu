@@ -1,7 +1,7 @@
 
 
 export const TILE_TYPES = [
-    { typeId: "ulaan_zurgaa_Нохой", color: "", title: "Нохой", rank: 16, count: 2, image: require("../assets/objects/6_2_1.png"), description: "Зуудаг нохойн зулзага\nЗургаан нүхтэй даалуу" },
+    { typeId: "ulaan_zurgaa_Нохой", color: "ulaan", title: "Нохой", rank: 6, count: 2, image: require("../assets/objects/6_2_1.png"), description: "Зуудаг нохойн зулзага\nЗургаан нүхтэй даалуу" },
 
     { typeId: "ulaan_daaluu_Даалуу", color: "ulaan", title: "Даалуу", rank: 12, count: 2, image: require("../assets/objects/12.png"), description: "Даа хамбан даалнн\nДахаа чирсэн хулгайч" },
     { typeId: "tsagaan_uuluu_Үүлүү", color: "tsagaan", title: "Үүлүү", rank: 11, count: 2, image: require("../assets/objects/11.png"), description: "Хуран цэргийн ханжин\nХурандаа цолтой хуутуу" },
@@ -35,4 +35,6 @@ export type TileInstance = {
     description: string;
     id: string;
     copyIndex: number;
+    /** Тухайн майхны жанлий мөн эсэх (хамгийн том, өнгөгүй) */
+    isJanlii?: boolean;
 };

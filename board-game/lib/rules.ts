@@ -9,7 +9,7 @@ import { tileViews, type TileView } from "./tiles";
 
 const LEAD_MIN_RANK = 8;
 
-/** Нохой (color "") ямар ч өнгөтэй таарна */
+/** Жанлий (color "") ямар ч өнгөтэй таарна */
 const colorMatches = (a?: string, b?: string) => !a || !b || a === b;
 
 const isPairTiles = (tiles: TileView[]) =>
@@ -29,10 +29,10 @@ export type Lead = {
 };
 
 /** Голд байгаа хамгийн том хөдөлгөөнийг олно */
-export const currentLead = (moves: MatchMove[]): Lead | null => {
+export const currentLead = (moves: MatchMove[], janlii?: string | null): Lead | null => {
   if (!moves.length) return null;
 
-  const withViews = moves.map((m) => ({ ...m, view: tileViews(m.tiles) }));
+  const withViews = moves.map((m) => ({ ...m, view: tileViews(m.tiles, janlii) }));
   const first = withViews[0];
   const refColor = first.isSecret ? undefined : first.view[0]?.color;
 

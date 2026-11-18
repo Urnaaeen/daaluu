@@ -51,6 +51,23 @@ const run = async () => {
   for (let step = 0; step < 4000; step++) {
     if (state.match.status === "finished") break;
 
+    // Майхны эхэнд миний ээлж бол жанлий сонгоно (гар тэр хүртэл нуугдмал)
+    if (state.match.phase === "janlii" && state.match.currentSeat === state.mySeat) {
+      const opts = state.match.janliiOptions;
+      const r = await call("POST", `/matches/${matchId}/janlii`, {
+        token,
+        body: { typeId: opts[step % opts.length] },
+      });
+      if (r.status !== 200) {
+        console.error("❌ Жанлий сонгож чадсангүй:", JSON.stringify(r.json));
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`  👑 ${state.match.maikhanNo}-р майхан: жанлий = ${r.json.match.janlii}`);
+      state = r.json;
+      continue;
+    }
+
     // Ботын ээлж бол сервер өөрөө тоглосон байх ёстой — гацвал зогсооно
     if (state.match.currentSeat !== state.mySeat) {
       const fresh = await call("GET", `/matches/${matchId}`, { token });

@@ -70,6 +70,10 @@ export type MatchState = {
     currentSeat: number | null;
     turnDeadline: string | null;
     turnSeconds: number;
+    /** 'janlii' үед currentSeat нь жанлий сонгогч, turnDeadline нь сонгох хугацаа; гар хоосон ирнэ */
+    phase?: "janlii" | "play";
+    janlii?: string | null;
+    janliiOptions?: string[];
   };
   players: MatchPlayer[];
   moves: MatchMove[];

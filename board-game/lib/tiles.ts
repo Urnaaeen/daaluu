@@ -1,4 +1,5 @@
 import { TILE_TYPES } from "../app/types";
+import { withJanlii } from "./janlii";
 
 /**
  * Серверээс зөвхөн модны id ирнэ ("ulaan_daaluu_Даалуу_3").
@@ -17,26 +18,32 @@ export type TileView = {
   color: string;
   rank: number;
   image: any;
+  /** Тухайн майхны жанлий мөн эсэх (хамгийн том, өнгөгүй) */
+  isJanlii: boolean;
 };
 
-export const tileView = (tileId: string): TileView | null => {
+/** janlii өгөгдвөл тэр төрлийн мод хамгийн том, өнгөгүй болно */
+export const tileView = (tileId: string, janlii?: string | null): TileView | null => {
   const type = byType.get(typeOfTile(tileId));
   if (!type) return null;
-  return {
-    id: tileId,
-    typeId: type.typeId,
-    title: type.title,
-    color: type.color,
-    rank: type.rank,
-    image: type.image,
-  };
+  return withJanlii(
+    {
+      id: tileId,
+      typeId: type.typeId as string,
+      title: type.title as string,
+      color: type.color as string,
+      rank: type.rank as number,
+      image: type.image,
+    },
+    janlii
+  );
 };
 
-export const tileViews = (tileIds: string[]): TileView[] =>
-  tileIds.map(tileView).filter((t): t is TileView => t !== null);
+export const tileViews = (tileIds: string[], janlii?: string | null): TileView[] =>
+  tileIds.map((id) => tileView(id, janlii)).filter((t): t is TileView => t !== null);
 
-/** Гарыг эрэмбээр нь буurаж эрэмбэлнэ (дэлгэц дээр том нь эхэнд) */
-export const sortHand = (tileIds: string[]): TileView[] =>
-  tileViews(tileIds).sort((a, b) =>
+/** Гарыг эрэмбээр нь буурч эрэмбэлнэ (дэлгэц дээр том нь эхэнд, жанлий хамгийн түрүүнд) */
+export const sortHand = (tileIds: string[], janlii?: string | null): TileView[] =>
+  tileViews(tileIds, janlii).sort((a, b) =>
     b.rank !== a.rank ? b.rank - a.rank : a.typeId.localeCompare(b.typeId)
   );

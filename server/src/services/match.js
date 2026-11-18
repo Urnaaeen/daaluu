@@ -1,12 +1,15 @@
+import crypto from "node:crypto";
 import { withTransaction } from "../db.js";
 import { chooseBotMove, firstLegalMove } from "../game/bot.js";
 import { isEndRule, shouldEnd } from "../game/endRules.js";
-import { canLead, currentLead, nextLeader, roundWinner, validateMove } from "../game/rules.js";
+import { currentLead, nextLeader, roundWinner, validateMove } from "../game/rules.js";
 import { rankPlayers, runTrading } from "../game/trading.js";
-import { dealHands, describeAll } from "../game/tiles.js";
+import { dealHands, describeAll, isJanliiOption, JANLII_OPTIONS } from "../game/tiles.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
 
 const SEATS = 5;
+// Жанлий сонгох хугацаа (ээлжийн хугацаанаас үл хамаарна)
+const JANLII_SECONDS = Number(process.env.JANLII_SECONDS ?? 30);
 const BOT_NAMES = ["ХАНДЦООЖ", "ШИЖИР", "ЭНХЛЭН", "УЛАМБАЯР", "БАТ"];
 
 /* ─────────── дотоод туслахууд ─────────── */
@@ -25,17 +28,17 @@ const loadPlayers = async (client, matchId) => {
   return rows;
 };
 
-const loadHands = async (client, matchId) => {
+const loadHands = async (client, matchId, janlii = null) => {
   const { rows } = await client.query(
     "select seat, tiles from match_hands where match_id = $1",
     [matchId]
   );
   const bySeat = {};
-  for (const r of rows) bySeat[r.seat] = describeAll(r.tiles) ?? [];
+  for (const r of rows) bySeat[r.seat] = describeAll(r.tiles, janlii) ?? [];
   return bySeat;
 };
 
-const loadRoundMoves = async (client, matchId, roundNo) => {
+const loadRoundMoves = async (client, matchId, roundNo, janlii = null) => {
   const { rows } = await client.query(
     `select seat, tiles, is_secret from match_moves
       where match_id = $1 and round_no = $2 order by played_at`,
@@ -43,7 +46,7 @@ const loadRoundMoves = async (client, matchId, roundNo) => {
   );
   return rows.map((r) => ({
     seat: r.seat,
-    tiles: describeAll(r.tiles) ?? [],
+    tiles: describeAll(r.tiles, janlii) ?? [],
     isSecret: r.is_secret,
   }));
 };
@@ -57,6 +60,79 @@ const writeHand = (client, matchId, seat, tiles) =>
 
 const setDeadline = (turnSeconds) =>
   turnSeconds > 0 ? new Date(Date.now() + turnSeconds * 1000) : null;
+
+/* ─────────── майхан эхлүүлэх / жанлий ─────────── */
+
+/**
+ * Майхны жанлий сонгогч. Хост (0-р суудал: өрөө үүсгэсэн / санамсаргүйн эхний хүн)
+ * эхэлж, дараагийн майхан бүрт ээлжлэн шилжинэ.
+ */
+const janliiChooser = (maikhanNo) => (Math.max(1, maikhanNo) - 1) % SEATS;
+
+/**
+ * Шинэ майхан: мод нууцаар тараагаад жанлий сонгох үе рүү орно.
+ * Сонголт хийгдэх хүртэл хэн ч гараа харахгүй (getMatchState нууна).
+ */
+const dealMaikhan = async (client, matchId, maikhanNo) => {
+  const hands = dealHands();
+  for (let seat = 0; seat < SEATS; seat++) {
+    await writeHand(client, matchId, seat, hands[seat]);
+  }
+  await client.query(
+    `update matches
+        set phase = 'janlii', janlii = null, current_seat = $2,
+            center = '[]'::jsonb, turn_deadline = $3
+      where id = $1`,
+    [matchId, janliiChooser(maikhanNo), new Date(Date.now() + JANLII_SECONDS * 1000)]
+  );
+};
+
+/**
+ * Жанлийг тогтоож тоглолтыг эхлүүлнэ. Сонгогч өөрөө анх гарна;
+ * гараа нээх эрхгүй бол дараагийн эрхтэй суудал (nextLeader-ийн дүрмээр).
+ */
+const applyJanlii = async (client, match, typeId) => {
+  if (!isJanliiOption(typeId)) throw badRequest("bad_janlii", "Ийм жанлий сонгох боломжгүй.");
+
+  const hands = await loadHands(client, match.id, typeId);
+  const lead = nextLeader(match.current_seat, hands);
+  let leader = lead.seat;
+  if (leader === null) {
+    leader = lead.highestSeat ?? match.current_seat;
+    await client.query(
+      "update match_players set ger = ger + 1 where match_id = $1 and seat = $2",
+      [match.id, leader]
+    );
+  }
+
+  await client.query(
+    `update matches set phase = 'play', janlii = $2, current_seat = $3, turn_deadline = $4
+      where id = $1`,
+    [match.id, typeId, leader, setDeadline(match.turn_seconds)]
+  );
+  return { janlii: typeId, chooserSeat: match.current_seat, leaderSeat: leader };
+};
+
+const randomJanlii = () => JANLII_OPTIONS[crypto.randomInt(0, JANLII_OPTIONS.length)];
+
+/** Хүн жанлий сонгоно — зөвхөн тухайн майхны сонгогч, зөвхөн сонгох үед */
+export const chooseJanlii = ({ matchId, userId, typeId }) =>
+  withTransaction(async (client) => {
+    const match = await lockMatch(client, matchId);
+    if (match.status !== "playing" || match.phase !== "janlii") {
+      throw badRequest("not_janlii_phase", "Одоо жанлий сонгох үе биш байна.");
+    }
+    const players = await loadPlayers(client, matchId);
+    const me = players.find((p) => p.user_id === userId);
+    if (!me) throw forbidden("not_in_match", "Та энэ тоглолтод байхгүй байна.");
+    if (me.seat !== match.current_seat) {
+      throw forbidden("not_janlii_chooser", "Энэ майханд өөр тоглогч жанлий сонгоно.");
+    }
+
+    const result = await applyJanlii(client, match, String(typeId));
+    const botMoves = await advanceBots(client, matchId);
+    return { ...result, botMoves };
+  });
 
 /* ─────────── тоглолт үүсгэх / нэгдэх ─────────── */
 
@@ -163,26 +239,18 @@ export const startMatch = ({ matchId, userId }) =>
       );
     }
 
-    const hands = dealHands();
-    for (let seat = 0; seat < SEATS; seat++) {
-      await writeHand(client, matchId, seat, hands[seat]);
-    }
-
-    // Гар нээх эрхтэй эхний суудлаас эхэлнэ — эрхгүй хүн дээр ээлж гацахгүй
-    const described = hands.map((h) => describeAll(h) ?? []);
-    const firstLeader = [0, 1, 2, 3, 4].find((s) => canLead(described[s])) ?? 0;
-
-    const { rows } = await client.query(
-      `update matches
-          set status = 'playing', started_at = now(), round_no = 1, maikhan_no = 1,
-              current_seat = $2, center = '[]'::jsonb, turn_deadline = $3
-        where id = $1 returning *`,
-      [matchId, firstLeader, setDeadline(match.turn_seconds)]
+    await client.query(
+      `update matches set status = 'playing', started_at = now(), round_no = 1, maikhan_no = 1
+        where id = $1`,
+      [matchId]
     );
+    // Мод нууцаар тараагаад хост жанлий сонгоно
+    await dealMaikhan(client, matchId, 1);
 
-    // Эхлэгч бот бол шууд тоглож эхэлнэ
+    // Сонгогч / эхлэгч бот бол шууд үргэлжилнэ
     await advanceBots(client, matchId);
 
+    const { rows } = await client.query("select * from matches where id = $1", [matchId]);
     return rows[0];
   });
 
@@ -217,15 +285,17 @@ export const startMatchFromQueue = async ({ players, endRule }) => {
  * бот ч дүрмийн шалгалтыг тойрч гарахгүй.
  */
 const applyMove = async (client, match, seat, tileIds) => {
-  const hands = await loadHands(client, match.id);
-  const moves = await loadRoundMoves(client, match.id, match.round_no);
+  if (match.phase !== "play") throw badRequest("janlii_pending", "Эхлээд жанлий сонгогдох ёстой.");
+
+  const hands = await loadHands(client, match.id, match.janlii);
+  const moves = await loadRoundMoves(client, match.id, match.round_no, match.janlii);
 
   if (moves.some((m) => m.seat === seat)) {
     throw badRequest("already_played", "Энэ гарт аль хэдийн мод гаргасан.");
   }
 
   const lead = currentLead(moves);
-  const result = validateMove({ hand: hands[seat] ?? [], tileIds, lead });
+  const result = validateMove({ hand: hands[seat] ?? [], tileIds, lead, janlii: match.janlii });
   if (!result.ok) throw badRequest("illegal_move", result.reason);
 
   const remaining = (hands[seat] ?? []).filter((t) => !tileIds.includes(t.id));
@@ -268,9 +338,16 @@ const advanceBots = async (client, matchId) => {
     // Хүний ээлж — зогсоно
     if (!seatRow || seatRow.user_id) break;
 
-    const hands = await loadHands(client, matchId);
-    const moves = await loadRoundMoves(client, matchId, match.round_no);
-    const tileIds = chooseBotMove(hands[match.current_seat] ?? [], currentLead(moves));
+    // Бот жанлий сонгогч бол санамсаргүй сонгоно
+    if (match.phase === "janlii") {
+      const r = await applyJanlii(client, match, randomJanlii());
+      events.push({ seat: match.current_seat, janlii: r.janlii });
+      continue;
+    }
+
+    const hands = await loadHands(client, matchId, match.janlii);
+    const moves = await loadRoundMoves(client, matchId, match.round_no, match.janlii);
+    const tileIds = chooseBotMove(hands[match.current_seat] ?? [], currentLead(moves), match.janlii);
     if (!tileIds) break;
 
     const result = await applyMove(client, match, match.current_seat, tileIds);
@@ -305,9 +382,16 @@ export const autoPlayTimedOut = (matchId) =>
       return { skipped: true };
     }
 
-    const hands = await loadHands(client, match.id);
-    const moves = await loadRoundMoves(client, match.id, match.round_no);
-    const tileIds = firstLegalMove(hands[match.current_seat] ?? [], currentLead(moves));
+    // Жанлий сонгох хугацаа дууслаа — санамсаргүй сонгоно
+    if (match.phase === "janlii") {
+      const r = await applyJanlii(client, match, randomJanlii());
+      const botMoves = await advanceBots(client, match.id);
+      return { autoJanlii: r, botMoves };
+    }
+
+    const hands = await loadHands(client, match.id, match.janlii);
+    const moves = await loadRoundMoves(client, match.id, match.round_no, match.janlii);
+    const tileIds = firstLegalMove(hands[match.current_seat] ?? [], currentLead(moves), match.janlii);
     if (!tileIds) return { skipped: true };
 
     const result = await applyMove(client, match, match.current_seat, tileIds);
@@ -332,7 +416,7 @@ const settleRound = async (client, match, moves) => {
     [match.id, winner.seat, winner.gained]
   );
 
-  const hands = await loadHands(client, match.id);
+  const hands = await loadHands(client, match.id, match.janlii);
   const allEmpty = [0, 1, 2, 3, 4].every((s) => (hands[s] ?? []).length === 0);
 
   // Бүх гар дууслаа — майхан дуусч худалдаа хийгдэнэ
@@ -390,22 +474,13 @@ const settleMaikhan = async (client, match) => {
   const end = shouldEnd(match.end_rule, traded, match.maikhan_no);
 
   if (!end.ended) {
-    // Шинэ майхан — мод дахин тараана, оноо хэвээр
-    const hands = dealHands();
-    for (let seat = 0; seat < SEATS; seat++) {
-      await writeHand(client, match.id, seat, hands[seat]);
-    }
-
-    const described = hands.map((h) => describeAll(h) ?? []);
-    const firstLeader = [0, 1, 2, 3, 4].find((s) => canLead(described[s])) ?? 0;
-
+    // Шинэ майхан — мод дахин тараана, оноо хэвээр. Дараагийн тоглогч жанлий сонгоно.
+    const nextMaikhan = match.maikhan_no + 1;
     await client.query(
-      `update matches
-          set round_no = round_no + 1, maikhan_no = maikhan_no + 1, current_seat = $2,
-              center = '[]'::jsonb, turn_deadline = $3
-        where id = $1`,
-      [match.id, firstLeader, setDeadline(match.turn_seconds)]
+      `update matches set round_no = round_no + 1, maikhan_no = $2 where id = $1`,
+      [match.id, nextMaikhan]
     );
+    await dealMaikhan(client, match.id, nextMaikhan);
 
     return { roundEnded: true, maikhanEnded: true, trades, gameEnded: false };
   }
@@ -464,8 +539,9 @@ export const getMatchState = async (client, matchId, userId) => {
     [matchId, match.round_no]
   );
 
+  // Жанлий сонгогдох хүртэл хэн ч гараа харахгүй ("модоо харахаас өмнө нэрлэнэ")
   let hand = [];
-  if (me) {
+  if (me && match.phase !== "janlii") {
     const h = await client.query(
       "select tiles from match_hands where match_id = $1 and seat = $2",
       [matchId, me.seat]
@@ -484,6 +560,10 @@ export const getMatchState = async (client, matchId, userId) => {
       currentSeat: match.current_seat,
       turnDeadline: match.turn_deadline,
       turnSeconds: match.turn_seconds,
+      // 'janlii' үед currentSeat нь жанлий сонгогч, turnDeadline нь сонгох хугацаа
+      phase: match.phase,
+      janlii: match.janlii,
+      janliiOptions: JANLII_OPTIONS,
     },
     // Бусдын талаар: нэр, оноо, үлдсэн модны ТОО — гэхдээ ямар мод болох нь харагдахгүй
     players: players.rows.map((p) => ({

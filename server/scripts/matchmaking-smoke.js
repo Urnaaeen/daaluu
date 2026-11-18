@@ -99,7 +99,14 @@ const run = async () => {
   check("эхнийхийн сонгосон дүрэм хадгалагдав", state.match?.endRule === "uglug6", state.match?.endRule);
   check("5 суудал бүрдсэн", state.players?.length === 5, String(state.players?.length));
   check("бот байхгүй — бүгд хүн", state.players?.every((p) => !p.isBot));
-  check("мод тарагдсан", state.myHand?.length === 10, String(state.myHand?.length));
+  // Мод тараагдсан ч жанлий сонгогдох хүртэл гар нуугдана; эхний хүн (хост) сонгоно
+  check("жанлий сонгох үе — эхний хүн сонгоно", state.match?.phase === "janlii" && state.match?.currentSeat === 0);
+  check("сонгохоос өмнө гар нуугдсан", (state.myHand ?? []).length === 0);
+  const picked = await call("POST", `/matches/${matchId}/janlii`, {
+    token: users[0].token,
+    body: { typeId: state.match.janliiOptions[0] },
+  });
+  check("мод тарагдсан (жанлийн дараа 10 мод)", picked.myHand?.length === 10, String(picked.myHand?.length));
 
   const names = state.players.map((p) => p.name).sort().join(",");
   check("нэрс таарч байна", names === [...users].map((u) => u.name).sort().join(","), names);

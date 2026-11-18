@@ -63,16 +63,16 @@ const selectPair = (hand, lead) => {
  * Ботын хөдөлгөөнийг сонгоно.
  * @returns мод id-ийн массив, эсвэл null (гаргах мод байхгүй)
  */
-export const chooseBotMove = (hand, lead) => {
+export const chooseBotMove = (hand, lead, janlii = null) => {
   if (!hand.length) return null;
 
   const pick = !lead ? selectLead(hand) : lead.isPair ? selectPair(hand, lead) : selectSingle(hand, lead);
   const ids = pick.filter(Boolean).map((t) => t.id);
 
-  if (validateMove({ hand, tileIds: ids, lead }).ok) return ids;
+  if (validateMove({ hand, tileIds: ids, lead, janlii }).ok) return ids;
 
   // Сонголт дүрэмд нийцээгүй бол бүх боломжийг шалгаж хүчинтэйг нь олно
-  return firstLegalMove(hand, lead);
+  return firstLegalMove(hand, lead, janlii);
 };
 
 /**
@@ -80,24 +80,24 @@ export const chooseBotMove = (hand, lead) => {
  * Ээлжийн хугацаа дуусахад автоматаар мод гаргахад мөн ашиглана —
  * хамгийн бага үнэтэй хувилбарыг сонгоно.
  */
-export const firstLegalMove = (hand, lead) => {
+export const firstLegalMove = (hand, lead, janlii = null) => {
   const asc = [...hand].sort(byRankAsc);
 
   // Эхлээд нэг мод
   for (const t of asc) {
-    if (validateMove({ hand, tileIds: [t.id], lead }).ok) return [t.id];
+    if (validateMove({ hand, tileIds: [t.id], lead, janlii }).ok) return [t.id];
   }
 
   // Дараа нь хос / хоёр мод
   for (const p of findPairs(hand)) {
     const ids = [p[0].id, p[1].id];
-    if (validateMove({ hand, tileIds: ids, lead }).ok) return ids;
+    if (validateMove({ hand, tileIds: ids, lead, janlii }).ok) return ids;
   }
 
   for (let i = 0; i < asc.length; i++) {
     for (let j = i + 1; j < asc.length; j++) {
       const ids = [asc[i].id, asc[j].id];
-      if (validateMove({ hand, tileIds: ids, lead }).ok) return ids;
+      if (validateMove({ hand, tileIds: ids, lead, janlii }).ok) return ids;
     }
   }
 

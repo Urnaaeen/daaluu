@@ -12,6 +12,7 @@ import {
 import ExitConfirmModal from "../components/ExitConfirmModal";
 import BlurredBackdrop from "../components/BlurredBackdrop";
 import GameSeat from "../components/GameSeat";
+import JanliiPicker from "../components/JanliiPicker";
 import PauseModal from "../components/PauseModal";
 import PeekModal from "../components/PeekModal";
 import GerIcon from "../components/ui/GerIcon";
@@ -19,6 +20,7 @@ import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
 import { api, ApiError } from "../lib/api";
 import { endRuleShort } from "../lib/endRules";
+import { janliiShort } from "../lib/janlii";
 import { canSelectTile, currentLead, validateMove } from "../lib/rules";
 import { subscribeToMatch, type MatchState } from "../lib/socket";
 import { sortHand, tileViews } from "../lib/tiles";
@@ -95,14 +97,19 @@ export default function MultiplayerGame() {
     });
   }, [state?.match.status, state?.players, router]);
 
-  const myHand = useMemo(() => sortHand(state?.myHand ?? []), [state?.myHand]);
+  // Тухайн майхны жанлий — модны эрэмбэ, өнгө үүнээс хамаарна
+  const janlii = state?.match.janlii ?? null;
+  const choosingJanlii = state?.match.status === "playing" && state?.match.phase === "janlii";
+  const [janliiBusy, setJanliiBusy] = useState(false);
+
+  const myHand = useMemo(() => sortHand(state?.myHand ?? [], janlii), [state?.myHand, janlii]);
 
   // Голд байгаа хамгийн том мод
   const biggest = useMemo(() => {
     const moves = state?.moves ?? [];
     if (!moves.length) return null;
 
-    const real = moves.filter((m) => !m.isSecret).map((m) => ({ ...m, view: tileViews(m.tiles) }));
+    const real = moves.filter((m) => !m.isSecret).map((m) => ({ ...m, view: tileViews(m.tiles, janlii) }));
     if (!real.length) return null;
 
     const refColor = real[0].view[0]?.color;
@@ -113,7 +120,20 @@ export default function MultiplayerGame() {
 
     const pool = valid.length ? valid : real;
     return pool.reduce((best, m) => (m.view[0].rank > best.view[0].rank ? m : best));
-  }, [state?.moves]);
+  }, [state?.moves, janlii]);
+
+  const pickJanlii = async (typeId: string) => {
+    if (!matchId) return;
+    setJanliiBusy(true);
+    setError("");
+    try {
+      await api(`/matches/${matchId}/janlii`, { method: "POST", body: { typeId } });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Жанлий сонгож чадсангүй.");
+    } finally {
+      setJanliiBusy(false);
+    }
+  };
 
   const play = async () => {
     if (!matchId || !selected.length) return;
@@ -137,7 +157,7 @@ export default function MultiplayerGame() {
   };
 
   // Голд байгаа хамгийн том — дүрмийн шалгалтад ашиглана
-  const lead = useMemo(() => currentLead(state?.moves ?? []), [state?.moves]);
+  const lead = useMemo(() => currentLead(state?.moves ?? [], janlii), [state?.moves, janlii]);
 
   // Аль модыг сонгож болохыг урьдчилан тооцно (сервер эцсийн шүүлтийг хийнэ)
   const selectable = useMemo(() => {
@@ -163,7 +183,8 @@ export default function MultiplayerGame() {
 
   const me = state.players.find((p) => p.isMe);
   const mySeat = state.mySeat ?? 0;
-  const myTurn = state.match.currentSeat === mySeat && state.match.status === "playing";
+  const myTurn =
+    state.match.currentSeat === mySeat && state.match.status === "playing" && !choosingJanlii;
   const lowTime = myTurn && secondsLeft !== null && secondsLeft <= 5;
   const canPlay = myTurn && selected.length > 0 && !selectionProblem && !sending;
 
@@ -188,7 +209,7 @@ export default function MultiplayerGame() {
         isTurn={state.match.currentSeat === player.seat && state.match.status === "playing"}
         timeLeft={secondsLeft}
         ger={player.ger}
-        tiles={move ? tileViews(move.tiles) : null}
+        tiles={move ? tileViews(move.tiles, janlii) : null}
         isBiggest={biggest?.seat === player.seat}
         onLongPress={() => setPeekSeat(player.seat)}
       />
@@ -196,11 +217,16 @@ export default function MultiplayerGame() {
   };
 
   const turnName = state.players.find((p) => p.seat === state.match.currentSeat)?.name ?? "";
-  const turnLabel = myTurn
-    ? secondsLeft === null
-      ? "Таны ээлж"
-      : `Таны ээлж · ${secondsLeft} сек`
-    : `${turnName} бодож байна…`;
+  const iChooseJanlii = choosingJanlii && state.match.currentSeat === mySeat;
+  const turnLabel = choosingJanlii
+    ? iChooseJanlii
+      ? "Жанлий сонгоно уу"
+      : `${turnName} жанлий сонгож байна…`
+    : myTurn
+      ? secondsLeft === null
+        ? "Таны ээлж"
+        : `Таны ээлж · ${secondsLeft} сек`
+      : `${turnName} бодож байна…`;
 
   const peekPlayer = state.players.find((p) => p.seat === peekSeat);
 
@@ -245,6 +271,11 @@ export default function MultiplayerGame() {
               {turnLabel}
             </Text>
           </View>
+          {!!janlii && !choosingJanlii && (
+            <View style={styles.janliiBadge}>
+              <Text style={styles.janliiBadgeText}>Жанлий · {janliiShort(janlii)}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.roundPill}>
@@ -300,7 +331,7 @@ export default function MultiplayerGame() {
       <View style={styles.mySlotRow}>
         {movesBySeat.has(mySeat) ? (
           <View style={styles.myPlayedRow}>
-            {tileViews(movesBySeat.get(mySeat)!.tiles).map((t, i) => (
+            {tileViews(movesBySeat.get(mySeat)!.tiles, janlii).map((t, i) => (
               <ExpoImage
                 key={t.id}
                 source={t.image}
@@ -415,6 +446,7 @@ export default function MultiplayerGame() {
               <Pressable
                 style={[
                   styles.handItem,
+                  item.isJanlii && styles.handItemJanlii,
                   isSelected && styles.handItemSelected,
                   !isSelected && !usable && styles.handItemDim,
                 ]}
@@ -435,6 +467,18 @@ export default function MultiplayerGame() {
           }}
         />
       </View>
+
+      {/* ЖАНЛИЙ СОНГОХ — майхны эхэнд, мод харагдахаас өмнө */}
+      {choosingJanlii && (
+        <JanliiPicker
+          key={`janlii-${state.match.maikhanNo}-${error}`}
+          canChoose={iChooseJanlii}
+          chooserName={turnName}
+          deadline={state.match.turnDeadline ? new Date(state.match.turnDeadline).getTime() : null}
+          onPick={pickJanlii}
+          busy={janliiBusy}
+        />
+      )}
 
       {/* MODALS */}
       {peekPlayer && (
@@ -508,7 +552,20 @@ const styles = StyleSheet.create({
 
   iconBtnText: { fontSize: 15, fontWeight: "800", color: "#fff" },
 
-  turnPillWrap: { flex: 1, alignItems: "center" },
+  turnPillWrap: { flex: 1, alignItems: "center", gap: 4 },
+  janliiBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "#F5A524",
+    backgroundColor: "rgba(245,165,36,0.16)",
+  },
+  janliiBadgeText: { color: "#F5C056", fontSize: 11, fontWeight: "900" },
+  handItemJanlii: {
+    borderColor: "#F5A524",
+    backgroundColor: "rgba(245,165,36,0.14)",
+  },
   turnPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999 },
   turnPillText: { fontSize: 13, fontWeight: "800" },
 

@@ -52,6 +52,18 @@ const playToEnd = async (token, endRule, maxMoves = 3000) => {
   for (let i = 0; i < maxMoves; i++) {
     if (state.match.status === "finished") break;
 
+    // Майхны эхэнд миний ээлж бол жанлий сонгоно
+    if (state.match.phase === "janlii" && state.match.currentSeat === state.mySeat) {
+      const opts = state.match.janliiOptions;
+      const r = await call("POST", `/matches/${matchId}/janlii`, {
+        token,
+        body: { typeId: opts[i % opts.length] },
+      });
+      if (r.status !== 200) return { stuck: true, state: r.json };
+      state = r.json;
+      continue;
+    }
+
     if (state.match.currentSeat !== state.mySeat || !state.myHand?.length) {
       const fresh = await call("GET", `/matches/${matchId}`, { token });
       state = fresh.json;

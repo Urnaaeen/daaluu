@@ -21,7 +21,8 @@
     "smoke:friends": "node scripts/friends-smoke.js",
     "smoke:qpay": "node scripts/qpay-smoke.js",
     "smoke:qpay:fake": "node scripts/qpay-smoke.js --fake",
-    "smoke:email": "node scripts/email-smoke.js"
+    "smoke:email": "node scripts/email-smoke.js",
+    "smoke:janlii": "node scripts/janlii-smoke.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

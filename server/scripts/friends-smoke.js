@@ -147,7 +147,25 @@ const run = async () => {
   const st = await playingA;
   check("Батад 'playing' төлөв socket-оор ирэв", !!st);
   check("3 хүн + 2 бот", st?.players.filter((p) => !p.isBot).length === 3 && st?.players.length === 5);
-  check("Батад зөвхөн өөрийн 10 мод", st?.myHand?.length === 10);
+  check("жанлий сонгогдох хүртэл Батад гар харагдахгүй", st?.match?.phase === "janlii" && (st?.myHand ?? []).length === 0);
+
+  // Өрөөний эзэн жанлий сонгоно — дараа нь Бат өөрийн 10 модоо авна
+  const handA = new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), 5000);
+    sa.on("match:state", (s) => {
+      if (s.myHand?.length === 10) {
+        clearTimeout(t);
+        resolve(s);
+      }
+    });
+  });
+  const pick = await call("POST", `/matches/${matchId}/janlii`, {
+    token: host.token,
+    body: { typeId: "ulaan_zurgaa_Нохой" },
+  });
+  check("өрөөний эзэн жанлий сонголоо", pick.status === 200 && pick.json.match?.janlii === "ulaan_zurgaa_Нохой");
+  const stA = await handA;
+  check("Батад зөвхөн өөрийн 10 мод", stA?.myHand?.length === 10);
 
   const late = await call("POST", "/rooms/join", { token: a.token, body: { code } });
   check("эхэлсэн тоглолтыг 'playing' гэж мэдээлэв", late.json.playing === true && late.json.matchId === null);

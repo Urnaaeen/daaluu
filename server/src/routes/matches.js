@@ -8,6 +8,7 @@ import {
   createMatch,
   getMatchState,
   joinMatch,
+  chooseJanlii,
   playTiles,
   startMatch,
 } from "../services/match.js";
@@ -105,6 +106,25 @@ router.post(
       matchId: req.params.id,
       userId: req.user.id,
       tileIds: tileIds.map(String),
+    });
+
+    const state = await getMatchState(pool, req.params.id, req.user.id);
+    res.json({ ...state, result });
+    broadcastMatch(req.params.id).catch(() => {});
+  })
+);
+
+// Жанлий сонгох — зөвхөн тухайн майхны сонгогч
+router.post(
+  "/:id/janlii",
+  wrap(async (req, res) => {
+    const typeId = req.body?.typeId;
+    if (!typeId) throw badRequest("no_janlii", "Жанлий сонгоно уу.");
+
+    const result = await chooseJanlii({
+      matchId: req.params.id,
+      userId: req.user.id,
+      typeId: String(typeId),
     });
 
     const state = await getMatchState(pool, req.params.id, req.user.id);

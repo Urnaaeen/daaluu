@@ -105,11 +105,20 @@ const run = async () => {
 
   console.log("\n── Төлөв цацагдах ──");
   const guestUpdate = waitFor(guestSock, "match:state");
-  await call("POST", `/matches/${matchId}/start`, { token: host.token });
-  const pushed = await guestUpdate;
+  const startRes = await call("POST", `/matches/${matchId}/start`, { token: host.token });
+  const pushed0 = await guestUpdate;
 
-  check("зочинд шинэчлэл ирлээ", !!pushed, "мэдээлэл ирсэнгүй");
-  check("статус playing", pushed?.match?.status === "playing");
+  check("зочинд шинэчлэл ирлээ", !!pushed0, "мэдээлэл ирсэнгүй");
+  check("статус playing", pushed0?.match?.status === "playing");
+  check("жанлий сонгох үед зочны гар нуугдсан", pushed0?.match?.phase === "janlii" && (pushed0?.myHand ?? []).length === 0);
+
+  // Хост жанлий сонгомогц зочинд гар нь socket-оор очно
+  const guestHand = waitUntil(guestSock, "match:state", (s) => s.myHand?.length === 10, 5000);
+  await call("POST", `/matches/${matchId}/janlii`, {
+    token: host.token,
+    body: { typeId: startRes.json.match.janliiOptions[0] },
+  });
+  const pushed = await guestHand;
   check("зочин өөрийн 10 модоо авлаа", pushed?.myHand?.length === 10, String(pushed?.myHand?.length));
 
   // Хостын гартай харьцуулж нууцлал зөрчигдөөгүйг шалгана
@@ -131,7 +140,12 @@ const run = async () => {
   });
   const timedId = timed.json.matchId;
   await new Promise((r) => hostSock.emit("match:join", timedId, r));
-  const before = await call("POST", `/matches/${timedId}/start`, { token: host.token });
+  const startedTimed = await call("POST", `/matches/${timedId}/start`, { token: host.token });
+  // Жанлий сонгоод тоглох үе рүү орно (жанлийн таймерыг smoke:janlii шалгана)
+  const before = await call("POST", `/matches/${timedId}/janlii`, {
+    token: host.token,
+    body: { typeId: startedTimed.json.match.janliiOptions[0] },
+  });
 
   const beforeCount = before.json.myHand?.length ?? 0;
 

@@ -4,6 +4,7 @@ import ExitConfirmModal from "../components/ExitConfirmModal";
 import BlurredBackdrop from "../components/BlurredBackdrop";
 import GameEndModal from "../components/GameEndModal";
 import GameSeat from "../components/GameSeat";
+import JanliiPicker from "../components/JanliiPicker";
 import HistoryDrawer, { type HistoryRound } from "../components/HistoryDrawer";
 import PauseModal from "../components/PauseModal";
 import PeekModal from "../components/PeekModal";
@@ -11,6 +12,7 @@ import SocialPanel from "../components/SocialPanel";
 import GerIcon from "../components/ui/GerIcon";
 import PushButton from "../components/ui/PushButton";
 import { useTheme } from "../context/ThemeContext";
+import { JANLII_SECONDS, janliiShort, randomJanlii, withJanlii } from "../lib/janlii";
 import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
 import ChatModule, { type ChatModuleRef } from './ask';
 import { selectBotMove } from './botlogic';
@@ -58,7 +60,8 @@ export default function PlayScreen() {
     const [myIndex] = useState(0);
     const chatModuleRef = useRef<ChatModuleRef>(null);
 
-    const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+    // -1 = жанлий сонгож байна (хэний ч ээлж биш)
+    const [currentPlayerIndex, setCurrentPlayerIndex] = useState(-1);
 
     const [roundMoves, setRoundMoves] = useState<{ playerIndex: number, tiles: TileInstance[] }[]>([]);
 
@@ -87,6 +90,25 @@ export default function PlayScreen() {
     }, []);
 
     const [hands, setHands] = useState(initialData.hands);
+    const handsRef = useRef(hands);
+    handsRef.current = hands;
+
+    // ===== ЖАНЛИЙ =====
+    // Майхны эхэнд мод харагдахаас өмнө сонгоно. Эхний майханд та, дараа нь ээлжлэн.
+    const [janlii, setJanlii] = useState<string | null>(null);
+    const [janliiPhase, setJanliiPhase] = useState(true);
+    const [janliiChooser, setJanliiChooser] = useState(0);
+    const [janliiDeadline, setJanliiDeadline] = useState<number | null>(() => Date.now() + JANLII_SECONDS * 1000);
+    const janliiDone = useRef(false);
+
+    const beginJanliiPhase = (chooser: number) => {
+        janliiDone.current = false;
+        setJanlii(null);
+        setCurrentPlayerIndex(-1);
+        setJanliiChooser(chooser);
+        setJanliiDeadline(Date.now() + JANLII_SECONDS * 1000);
+        setJanliiPhase(true);
+    };
     const [center, setCenter] = useState<(TileInstance | TileInstance[])[]>(initialData.center);
     const [selectedTileIds, setSelectedTileIds] = useState<string[]>([]);
 
@@ -131,6 +153,37 @@ export default function PlayScreen() {
             return a.typeId.localeCompare(b.typeId);
         });
     }, [hands, myIndex]);
+
+    /** Жанлийг тогтоож, сонгогч (эрхгүй бол дараагийн эрхтэй тоглогч) анх гарна */
+    const applyJanlii = (typeId: string) => {
+        if (janliiDone.current) return;
+        janliiDone.current = true;
+
+        const newHands = handsRef.current.map(h => h.map(t => withJanlii(t, typeId)));
+        setHands(newHands);
+        setJanlii(typeId);
+        setJanliiPhase(false);
+        setJanliiDeadline(null);
+
+        let leader = janliiChooser;
+        for (let i = 0; i < 5; i++) {
+            const seat = (janliiChooser + i) % 5;
+            if (checkCanStartGame(newHands[seat])) { leader = seat; break; }
+        }
+        setCurrentPlayerIndex(leader);
+        console.log(`👑 Жанлий: ${typeId} — ${leader}-р тоглогч анх гарна`);
+    };
+
+    // Бот сонгогч бол бодоод санамсаргүй сонгоно; та хугацаандаа сонгоогүй бол санамсаргүй
+    useEffect(() => {
+        if (!janliiPhase || paused) return;
+        const ms = janliiChooser !== 0
+            ? 1500
+            : Math.max(0, (janliiDeadline ?? Date.now()) - Date.now());
+        const t = setTimeout(() => applyJanlii(randomJanlii()), ms);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [janliiPhase, janliiChooser, janliiDeadline, paused]);
 
     const getAllCenterTiles = (): TileInstance[] => {
         const allTiles: TileInstance[] = [];
@@ -801,7 +854,8 @@ export default function PlayScreen() {
         setFinalScores(null);
         setMyScore({ stars: 0, tsai: 2, avlaga: 0, uglug: 0 });
         setOpponents(prev => prev.map(opp => ({ ...opp, stars: 0, tsai: 2, avlaga: 0, uglug: 0 })));
-        startNewRound();
+        // Шинэ тоглолт — дахин та эхэлж сонгоно
+        startNewRound(0);
     };
 
     const handleExit = () => {
@@ -813,7 +867,7 @@ export default function PlayScreen() {
         router.push('/');
     };
 
-    const startNewRound = () => {
+    const startNewRound = (chooser: number = (janliiChooser + 1) % 5) => {
         setMyScore(prev => ({
             ...prev,
             stars: 0
@@ -831,7 +885,7 @@ export default function PlayScreen() {
         setRoundMoves([]);
 
         setRoundInProgress(true);
-        setCurrentPlayerIndex(0);
+        beginJanliiPhase(chooser);
     };
 
     const [opponents, setOpponents] = useState([
@@ -853,6 +907,7 @@ export default function PlayScreen() {
     const [finalScores, setFinalScores] = useState<{ winner: FinalScorePlayer; allScores: FinalScorePlayer[] } | null>(null);
 
     useEffect(() => {
+        if (currentPlayerIndex < 0) return; // жанлий сонгож байна
         if (currentPlayerIndex === 0) {
             setTimeLeft(turnLimit);
             setIsTimerActive(true);
@@ -921,7 +976,11 @@ export default function PlayScreen() {
         return move ? move.playerIndex : -1;
     }, [roundMoves, currentTiles]);
 
-    const turnLabel = roundFull
+    const turnLabel = janliiPhase
+        ? janliiChooser === 0
+            ? "Жанлий сонгоно уу"
+            : `${dispNames[janliiChooser]} жанлий сонгож байна…`
+        : roundFull
         ? "Тооцоолж байна…"
         : myTurn
             ? turnLimit === 0 ? "Таны ээлж" : `Таны ээлж · ${timeLeft} сек`
@@ -996,6 +1055,11 @@ export default function PlayScreen() {
                             {turnLabel}
                         </Text>
                     </Animated.View>
+                    {!!janlii && !janliiPhase && (
+                        <View style={styles.janliiBadge}>
+                            <Text style={styles.janliiBadgeText}>Жанлий · {janliiShort(janlii)}</Text>
+                        </View>
+                    )}
                 </View>
 
                 <Pressable
@@ -1199,7 +1263,7 @@ export default function PlayScreen() {
             <View style={styles.handWrap}>
                 <FlatList
                     horizontal
-                    data={myHand}
+                    data={janliiPhase ? [] : myHand}
                     keyExtractor={(t) => t.id}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 14, gap: 9 }}
@@ -1211,6 +1275,7 @@ export default function PlayScreen() {
                             <Pressable
                                 style={[
                                     styles.handItem,
+                                    item.isJanlii && styles.handItemJanlii,
                                     isSelected && styles.handItemSelected,
                                     !isSelected && !canSelect && styles.handItemDisabled
                                 ]}
@@ -1291,6 +1356,15 @@ export default function PlayScreen() {
                     onExit={handleExit}
                 />
             )}
+            {janliiPhase && (
+                <JanliiPicker
+                    key={`janlii-${janliiChooser}-${janliiDeadline}`}
+                    canChoose={janliiChooser === 0}
+                    chooserName={dispNames[janliiChooser]}
+                    deadline={janliiDeadline}
+                    onPick={applyJanlii}
+                />
+            )}
             <ChatModule ref={chatModuleRef} />
         </View>
     );
@@ -1337,6 +1411,27 @@ const styles = StyleSheet.create({
     turnPillWrap: {
         flex: 1,
         alignItems: "center",
+        gap: 4,
+    },
+
+    janliiBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 3,
+        borderRadius: 999,
+        borderWidth: 1.5,
+        borderColor: "#F5A524",
+        backgroundColor: "rgba(245,165,36,0.16)",
+    },
+
+    janliiBadgeText: {
+        color: "#F5C056",
+        fontSize: 11,
+        fontWeight: "900",
+    },
+
+    handItemJanlii: {
+        borderColor: "#F5A524",
+        backgroundColor: "rgba(245,165,36,0.14)",
     },
 
     turnPill: {

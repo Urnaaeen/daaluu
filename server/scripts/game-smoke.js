@@ -60,11 +60,52 @@ const run = async () => {
   const notHost = await call("POST", `/matches/${matchId}/start`, { token: guest.token });
   check("хост биш эхлүүлж чадсангүй", notHost.json.error === "not_host", JSON.stringify(notHost.json));
 
-  const started = await call("POST", `/matches/${matchId}/start`, { token: host.token });
+  let started = await call("POST", `/matches/${matchId}/start`, { token: host.token });
   check("хост эхлүүллээ", started.status === 200, JSON.stringify(started.json));
   check("статус playing", started.json.match?.status === "playing");
   check("5 суудал бүрдэв", started.json.players?.length === 5);
   check("3 суудал ботоор нөхөгдөв", started.json.players?.filter((p) => p.isBot).length === 3);
+
+  console.log("\n── Жанлий ──");
+  const opts = started.json.match?.janliiOptions ?? [];
+  check("жанлий сонгох үе", started.json.match?.phase === "janlii", started.json.match?.phase);
+  check("хост (0-р суудал) сонгоно", started.json.match?.currentSeat === 0);
+  check("сонгохоос өмнө гар харагдахгүй", (started.json.myHand ?? []).length === 0);
+  check("8 сонголт, Нохой багтсан", opts.length === 8 && opts.includes("ulaan_zurgaa_Нохой"));
+
+  const guestPick = await call("POST", `/matches/${matchId}/janlii`, {
+    token: guest.token,
+    body: { typeId: opts[0] },
+  });
+  check("сонгогч биш хүн сонгож чадсангүй", guestPick.json.error === "not_janlii_chooser", JSON.stringify(guestPick.json));
+
+  const badPick = await call("POST", `/matches/${matchId}/janlii`, {
+    token: host.token,
+    body: { typeId: "ulaan_daaluu_Даалуу" },
+  });
+  check("жагсаалтад байхгүй мод татгалзав", badPick.json.error === "bad_janlii", JSON.stringify(badPick.json));
+
+  const earlyPlay = await call("POST", `/matches/${matchId}/play`, {
+    token: host.token,
+    body: { tiles: ["ulaan_hoyr_Ёоз_1"] },
+  });
+  check("жанлий сонгохоос өмнө мод гаргаж болохгүй", earlyPlay.json.error === "janlii_pending", JSON.stringify(earlyPlay.json));
+
+  const JANLII = "tsagaan_doloo_Сарлаг долоо";
+  const picked = await call("POST", `/matches/${matchId}/janlii`, {
+    token: host.token,
+    body: { typeId: JANLII },
+  });
+  check("хост жанлий сонголоо", picked.status === 200 && picked.json.match?.janlii === JANLII, JSON.stringify(picked.json).slice(0, 200));
+  check("тоглох үе эхлэв", picked.json.match?.phase === "play");
+  check("хост анх гарна", picked.json.match?.currentSeat === 0, String(picked.json.match?.currentSeat));
+
+  const again = await call("POST", `/matches/${matchId}/janlii`, {
+    token: host.token,
+    body: { typeId: opts[0] },
+  });
+  check("дахин сонгож болохгүй", again.json.error === "not_janlii_phase");
+  started = picked;
 
   console.log("\n── Нууц гар ──");
   check("өөрийн гар 10 модтой", started.json.myHand?.length === 10, String(started.json.myHand?.length));
@@ -118,7 +159,9 @@ const run = async () => {
   const rankOf = new Map((tileInfo.json.tiles ?? []).map((t) => [t.type_id, t.rank]));
   const typeOf = (id) => id.replace(/_(\d+)$/, "");
 
-  const weak = started.json.myHand.find((id) => (rankOf.get(typeOf(id)) ?? 0) < 8);
+  check("Нохой энгийн 6 нүдтэй мод болсон", rankOf.get("ulaan_zurgaa_Нохой") === 6);
+  const isJ = (id) => typeOf(id) === JANLII;
+  const weak = started.json.myHand.find((id) => !isJ(id) && (rankOf.get(typeOf(id)) ?? 0) < 8);
   if (weak) {
     const bad = await call("POST", `/matches/${matchId}/play`, {
       token: host.token,
@@ -129,7 +172,8 @@ const run = async () => {
     check("8-аас доош мод гарт байсангүй (алгасав)", true);
   }
 
-  const strong = started.json.myHand.find((id) => (rankOf.get(typeOf(id)) ?? 0) >= 8);
+  // Жанлий (Сарлаг долоо, 7 нүд) ч дангаараа гарааг нээж болно
+  const strong = started.json.myHand.find((id) => isJ(id) || (rankOf.get(typeOf(id)) ?? 0) >= 8);
   check("8-аас дээш мод гарт бий", !!strong);
 
   if (strong) {
