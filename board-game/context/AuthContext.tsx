@@ -20,12 +20,18 @@ const SESSION_KEY = "daaluu.session";
 
 type Session = { token: string; user: AuthUser };
 
+export type SignupCodeResult =
+  | { error: string }
+  | { error?: undefined; required: boolean; resendIn?: number; devCode?: string };
+
 type AuthState = {
   user: AuthUser | null;
   stats: UserStats | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (name: string, email: string, password: string) => Promise<string | null>;
+  /** Бүртгэлийн 1-р алхам: и-мэйл рүү код илгээнэ. required=false бол код хэрэггүй. */
+  requestSignupCode: (name: string, email: string, password: string) => Promise<SignupCodeResult>;
+  signUp: (name: string, email: string, password: string, code?: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   updateName: (name: string) => Promise<string | null>;
   /** Зоос/статистикийг серверээс дахин уншина */
@@ -37,6 +43,7 @@ const AuthContext = createContext<AuthState>({
   stats: null,
   loading: true,
   signIn: async () => null,
+  requestSignupCode: async () => ({ required: false }),
   signUp: async () => null,
   signOut: async () => {},
   updateName: async () => null,
@@ -116,12 +123,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     },
 
-    signUp: async (name, email, password) => {
+    requestSignupCode: async (name, email, password) => {
+      try {
+        return await api<{ required: boolean; resendIn?: number; devCode?: string }>(
+          "/auth/register/code",
+          {
+            method: "POST",
+            anonymous: true,
+            body: { name: name.trim(), email: email.trim().toLowerCase(), password },
+          }
+        );
+      } catch (e) {
+        return { error: errorText(e) };
+      }
+    },
+
+    signUp: async (name, email, password, code) => {
       try {
         const res = await api<Session>("/auth/register", {
           method: "POST",
           anonymous: true,
-          body: { name: name.trim(), email: email.trim().toLowerCase(), password },
+          body: { name: name.trim(), email: email.trim().toLowerCase(), password, code },
         });
         await persist(res);
         return null;

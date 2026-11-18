@@ -25,7 +25,8 @@ export type Field = {
   onChange: (v: string) => void;
   placeholder: string;
   secure?: boolean;
-  keyboard?: "email-address" | "default";
+  keyboard?: "email-address" | "default" | "number-pad";
+  maxLength?: number;
 };
 
 type AuthScreenProps = {
@@ -106,6 +107,7 @@ export default function AuthScreen({
                 placeholderTextColor={colors.muted}
                 secureTextEntry={f.secure}
                 keyboardType={f.keyboard ?? "default"}
+                maxLength={f.maxLength}
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!busy}

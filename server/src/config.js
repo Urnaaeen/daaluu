@@ -45,6 +45,23 @@ export const config = {
   // Гаднаас хандах хаяг (https://домэйн) — QPay callback энд ирнэ
   publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 4000}`,
 
+  mail: {
+    brevoApiKey: process.env.BREVO_API_KEY ?? "",
+    // Brevo дээр баталгаажуулсан илгээгчийн хаяг
+    from: process.env.MAIL_FROM ?? "",
+    fromName: process.env.MAIL_FROM_NAME ?? "Цай хураах",
+  },
+
+  // Бүртгүүлэхэд и-мэйлийн код шаардах эсэх. Анхдагчаар и-мэйл илгээгч
+  // тохируулсан үед асна; EMAIL_VERIFICATION=true/false-оор албадаж болно.
+  emailVerification:
+    process.env.EMAIL_VERIFICATION !== undefined && process.env.EMAIL_VERIFICATION !== ""
+      ? process.env.EMAIL_VERIFICATION === "true"
+      : Boolean(process.env.BREVO_API_KEY),
+
+  // Зөвхөн тест: кодыг API хариунд буцаана. Production дээр ХЭЗЭЭ Ч асаахгүй.
+  mailDevEcho: process.env.MAIL_DEV_ECHO === "true" && process.env.NODE_ENV !== "production",
+
   qpay: {
     // true бол жинхэнэ QPay (sandbox эсвэл production) руу хандана
     enabled: process.env.QPAY_ENABLED === "true",

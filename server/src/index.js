@@ -13,6 +13,8 @@ import roomsRouter from "./routes/rooms.js";
 import { attachRealtime, startTurnTimer } from "./realtime.js";
 
 const app = express();
+// Render / Docker proxy-ийн ард req.ip нь жинхэнэ хэрэглэгчийн IP болно
+app.set("trust proxy", 1);
 
 app.use(express.json());
 app.use(

@@ -20,6 +20,11 @@ services:
         generateValue: true
       - key: QPAY_CALLBACK_SECRET
         generateValue: true
+      # Бүртгэлийн и-мэйл код (Brevo). BREVO_API_KEY тавьсан үед код шаардана.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM # Brevo дээр баталгаажуулсан илгээгчийн и-мэйл
+        sync: false
       - key: ALLOW_DEMO_PAYMENTS
         value: "true"
       - key: QPAY_ENABLED
