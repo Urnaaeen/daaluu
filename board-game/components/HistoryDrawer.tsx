@@ -1,13 +1,15 @@
 import { Image as ExpoImage } from "expo-image";
 import React from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { TileInstance } from "../app/types";
 import { useTheme } from "../context/ThemeContext";
 import { PALETTE } from "../theme/colors";
 
+/** Боттой (TileInstance) ба онлайн (TileView) аль алинд нь тохирно — id, зураг л хэрэгтэй */
+type HistoryTile = { id: string; image: any };
+
 export type HistoryRound = {
   winner: number;
-  plays: (TileInstance[] | null)[];
+  plays: (HistoryTile[] | null)[];
 };
 
 type HistoryDrawerProps = {

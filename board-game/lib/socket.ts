@@ -77,6 +77,8 @@ export type MatchState = {
   };
   players: MatchPlayer[];
   moves: MatchMove[];
+  /** Одоогийн майхны дууссан гарууд. plays[seat] — тухайн суудлын гаргасан мод (нууц мод "nuuts_*") */
+  history?: { roundNo: number; winnerSeat: number; wasPair: boolean; plays: (string[] | null)[] }[];
   mySeat: number | null;
   myHand: string[];
 };

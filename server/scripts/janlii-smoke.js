@@ -194,6 +194,25 @@ try {
   }
 
   check("10 майхан бүрэн тоглогдож дуусав", state.match.status === "finished", state.match.status);
+
+  console.log("── Гарын түүх (онлайн хажуугийн самбар) ──");
+  const hist = state.history ?? [];
+  check("сүүлийн майхны гарын түүх ирэв", hist.length > 0, String(hist.length));
+  check(
+    "гар бүр 5 суудалтай, ялагчтай",
+    hist.every((h) => h.plays.length === 5 && h.winnerSeat >= 0 && h.winnerSeat <= 4)
+  );
+  const typeOf = (id) => id.replace(/_(\d+)$/, "");
+  const leaked = hist.some((h) =>
+    h.plays.some(
+      (tiles, seat) =>
+        seat !== state.mySeat &&
+        tiles?.length === 2 &&
+        !tiles.every((t) => t.startsWith("nuuts_")) &&
+        typeOf(tiles[0]) !== typeOf(tiles[1])
+    )
+  );
+  check("бусдын нууц мод (хосгүй 2 мод) нуугдсан", !leaked);
   check(
     "хост (0-р суудал) 1, 6-р майханд сонгов — бусдыг ботууд ээлжлэн",
     JSON.stringify(myChoices) === "[1,6]",

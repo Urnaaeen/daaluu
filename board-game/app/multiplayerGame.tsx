@@ -12,6 +12,7 @@ import {
 import ExitConfirmModal from "../components/ExitConfirmModal";
 import BlurredBackdrop from "../components/BlurredBackdrop";
 import GameSeat from "../components/GameSeat";
+import HistoryDrawer, { type HistoryRound } from "../components/HistoryDrawer";
 import JanliiPicker from "../components/JanliiPicker";
 import PauseModal from "../components/PauseModal";
 import PeekModal from "../components/PeekModal";
@@ -39,6 +40,7 @@ export default function MultiplayerGame() {
   const [peekSeat, setPeekSeat] = useState(-1);
   const [showExit, setShowExit] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   // Realtime төлөв.
@@ -230,6 +232,16 @@ export default function MultiplayerGame() {
 
   const peekPlayer = state.players.find((p) => p.seat === peekSeat);
 
+  // Гарын түүх: суудлын дугаараар (0–4) нэр, гаргасан мод
+  const seatNames = [0, 1, 2, 3, 4].map((seat) => {
+    const p = state.players.find((x) => x.seat === seat);
+    return p?.isMe ? "Чи" : p?.name ?? "";
+  });
+  const historyRounds: HistoryRound[] = (state.history ?? []).map((h) => ({
+    winner: h.winnerSeat,
+    plays: h.plays.map((tiles) => (tiles ? tileViews(tiles, janlii) : null)),
+  }));
+
   return (
     <View style={[styles.safe, { backgroundColor: colors.feltTop }]}>
       <BlurredBackdrop />
@@ -278,9 +290,14 @@ export default function MultiplayerGame() {
           )}
         </View>
 
-        <View style={styles.roundPill}>
-          <Text style={styles.roundText}>{state.match.roundNo}</Text>
-        </View>
+        {/* Гарын түүх — боттой горимтой ижил */}
+        <Pressable
+          onPress={() => setShowHistory(true)}
+          accessibilityLabel="Гарын түүх"
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressedDown]}
+        >
+          <Text style={styles.iconBtnText}>☰</Text>
+        </Pressable>
       </View>
 
       <View style={styles.spread} />
@@ -480,6 +497,13 @@ export default function MultiplayerGame() {
         />
       )}
 
+      <HistoryDrawer
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        rounds={historyRounds}
+        names={seatNames}
+      />
+
       {/* MODALS */}
       {peekPlayer && (
         <PeekModal
@@ -569,17 +593,6 @@ const styles = StyleSheet.create({
   turnPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999 },
   turnPillText: { fontSize: 13, fontWeight: "800" },
 
-  roundPill: {
-    minWidth: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-
-  roundText: { fontSize: 14, fontFamily: MONO, color: "#fff" },
 
   topSeats: {
     flexDirection: "row",

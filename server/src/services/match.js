@@ -406,9 +406,9 @@ const settleRound = async (client, match, moves) => {
   const winner = roundWinner(moves);
 
   await client.query(
-    `insert into match_rounds (match_id, round_no, winner_seat, was_pair)
-     values ($1, $2, $3, $4)`,
-    [match.id, match.round_no, winner.seat, winner.wasPair]
+    `insert into match_rounds (match_id, round_no, winner_seat, was_pair, maikhan_no)
+     values ($1, $2, $3, $4, $5)`,
+    [match.id, match.round_no, winner.seat, winner.wasPair, match.maikhan_no]
   );
 
   await client.query(
@@ -539,6 +539,32 @@ export const getMatchState = async (client, matchId, userId) => {
     [matchId, match.round_no]
   );
 
+  // Нууц мод (хосгүй 2 мод) зөвхөн гаргасан хүндээ харагдана — бусдад "nuuts"
+  const mask = (seat, tiles, isSecret) =>
+    isSecret && seat !== me?.seat ? tiles.map((_, i) => `nuuts_${i + 1}`) : tiles;
+
+  // Гарын түүх — одоогийн майхны дууссан гарууд (хажуугийн самбар)
+  const rounds = await client.query(
+    `select round_no, winner_seat, was_pair from match_rounds
+      where match_id = $1 and maikhan_no = $2 order by round_no`,
+    [matchId, match.maikhan_no]
+  );
+  const roundNos = rounds.rows.map((r) => r.round_no);
+  const pastMoves = roundNos.length
+    ? await client.query(
+        `select round_no, seat, tiles, is_secret from match_moves
+          where match_id = $1 and round_no = any($2::int[])`,
+        [matchId, roundNos]
+      )
+    : { rows: [] };
+  const history = rounds.rows.map((r) => {
+    const plays = [null, null, null, null, null];
+    for (const m of pastMoves.rows) {
+      if (m.round_no === r.round_no) plays[m.seat] = mask(m.seat, m.tiles, m.is_secret);
+    }
+    return { roundNo: r.round_no, winnerSeat: r.winner_seat, wasPair: r.was_pair, plays };
+  });
+
   // Жанлий сонгогдох хүртэл хэн ч гараа харахгүй ("модоо харахаас өмнө нэрлэнэ")
   let hand = [];
   if (me && match.phase !== "janlii") {
@@ -581,7 +607,12 @@ export const getMatchState = async (client, matchId, userId) => {
       place: p.place,
       finalScore: p.final_score,
     })),
-    moves: moves.rows.map((m) => ({ seat: m.seat, tiles: m.tiles, isSecret: m.is_secret })),
+    moves: moves.rows.map((m) => ({
+      seat: m.seat,
+      tiles: mask(m.seat, m.tiles, m.is_secret),
+      isSecret: m.is_secret,
+    })),
+    history,
     mySeat: me?.seat ?? null,
     myHand: hand,
   };
