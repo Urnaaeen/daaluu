@@ -79,6 +79,8 @@ export type MatchState = {
   moves: MatchMove[];
   /** Одоогийн майхны дууссан гарууд. plays[seat] — тухайн суудлын гаргасан мод (нууц мод "nuuts_*") */
   history?: { roundNo: number; winnerSeat: number; wasPair: boolean; plays: (string[] | null)[] }[];
+  /** Сүүлд дууссан гар (майхнаас үл хамаарна) — ширээн дээр түр харуулна */
+  lastRound?: { roundNo: number; winnerSeat: number; wasPair: boolean; plays: (string[] | null)[] } | null;
   mySeat: number | null;
   myHand: string[];
 };

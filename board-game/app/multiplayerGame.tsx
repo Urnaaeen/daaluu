@@ -1,6 +1,6 @@
 import { Image as ExpoImage } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -26,6 +26,9 @@ import { canSelectTile, currentLead, validateMove } from "../lib/rules";
 import { subscribeToMatch, type MatchState } from "../lib/socket";
 import { sortHand, tileViews } from "../lib/tiles";
 import { AVATAR_COLORS, MONO, PALETTE } from "../theme/colors";
+
+// Дууссан гар ширээн дээр харагдах хугацаа (сервер ROUND_PAUSE_MS = 2.5с хүлээнэ)
+const ROUND_SHOW_MS = 2300;
 
 export default function MultiplayerGame() {
   const router = useRouter();
@@ -89,15 +92,41 @@ export default function MultiplayerGame() {
       }));
 
     const winner = rows[0];
-    router.replace({
-      pathname: "/end",
-      params: {
-        scores: JSON.stringify(rows),
-        winner: winner?.name ?? "",
-        summary: `${winner?.score ?? 0} оноогоор түрүүллээ`,
-      },
-    });
+    // Сүүлийн гарыг ширээн дээр харуулсны дараа дүн рүү шилжинэ
+    const t = setTimeout(() => {
+      router.replace({
+        pathname: "/end",
+        params: {
+          scores: JSON.stringify(rows),
+          winner: winner?.name ?? "",
+          summary: `${winner?.score ?? 0} оноогоор түрүүллээ`,
+        },
+      });
+    }, ROUND_SHOW_MS);
+    return () => clearTimeout(t);
   }, [state?.match.status, state?.players, router]);
+
+  /**
+   * Гар дуусахад сервер ширээг шууд цэвэрлэдэг тул сүүлийн мод (ялангуяа ботын)
+   * харагдахгүй өнгөрдөг. Шинэ дууссан гар ирэхэд түүнийг ширээн дээр
+   * ROUND_SHOW_MS хугацаанд үлдээж, хэн идсэнийг харуулна (боттой горим шиг).
+   */
+  const seenRound = useRef<number | null>(null);
+  const [recent, setRecent] = useState<NonNullable<MatchState["lastRound"]> | null>(null);
+  useEffect(() => {
+    const lr = state?.lastRound;
+    if (!lr) return;
+    if (seenRound.current === null) {
+      // Анх ачаалахад хуучин гарыг дахин тоглуулахгүй
+      seenRound.current = lr.roundNo;
+      return;
+    }
+    if (lr.roundNo === seenRound.current) return;
+    seenRound.current = lr.roundNo;
+    setRecent(lr);
+    const t = setTimeout(() => setRecent(null), ROUND_SHOW_MS);
+    return () => clearTimeout(t);
+  }, [state?.lastRound]);
 
   // Тухайн майхны жанлий — модны эрэмбэ, өнгө үүнээс хамаарна
   const janlii = state?.match.janlii ?? null;
@@ -199,7 +228,22 @@ export default function MultiplayerGame() {
     ...others.filter((p) => p.seat < mySeat),
   ];
 
-  const movesBySeat = new Map(state.moves.map((m) => [m.seat, m]));
+  // Шинэ гар хараахан эхлээгүй бол саяхан дууссан гарыг ширээн дээр үлдээнэ
+  const showingRecent = !!recent && state.moves.length === 0;
+  const boardMoves = showingRecent
+    ? recent!.plays.flatMap((tiles, seat) =>
+        tiles ? [{ seat, tiles, isSecret: tiles[0]?.startsWith("nuuts") ?? false }] : []
+      )
+    : state.moves;
+  const biggestSeat = showingRecent ? recent!.winnerSeat : biggest?.seat;
+  // Гол хэсэг: дууссан гарыг харуулж байх үед идсэн мод
+  const centerBig = showingRecent
+    ? (() => {
+        const tiles = recent!.plays[recent!.winnerSeat];
+        return tiles ? { seat: recent!.winnerSeat, view: tileViews(tiles, janlii) } : null;
+      })()
+    : biggest;
+  const movesBySeat = new Map(boardMoves.map((m) => [m.seat, m]));
 
   const seatFor = (player: (typeof state.players)[number] | undefined) => {
     if (!player) return <View style={{ width: 86 }} />;
@@ -212,15 +256,22 @@ export default function MultiplayerGame() {
         timeLeft={secondsLeft}
         ger={player.ger}
         tiles={move ? tileViews(move.tiles, janlii) : null}
-        isBiggest={biggest?.seat === player.seat}
+        isBiggest={biggestSeat === player.seat}
         onLongPress={() => setPeekSeat(player.seat)}
       />
     );
   };
 
+  const seatNameOf = (seat: number) => {
+    const p = state.players.find((x) => x.seat === seat);
+    return p?.isMe ? "Та" : p?.name ?? "";
+  };
   const turnName = state.players.find((p) => p.seat === state.match.currentSeat)?.name ?? "";
   const iChooseJanlii = choosingJanlii && state.match.currentSeat === mySeat;
-  const turnLabel = choosingJanlii
+  const recentWinner = showingRecent ? seatNameOf(recent!.winnerSeat) : "";
+  const turnLabel = showingRecent
+    ? `${recentWinner} идлээ`
+    : choosingJanlii
     ? iChooseJanlii
       ? "Жанлий сонгоно уу"
       : `${turnName} жанлий сонгож байна…`
@@ -312,11 +363,11 @@ export default function MultiplayerGame() {
         {seatFor(ordered[0])}
 
         <View style={styles.centerArea}>
-          {biggest ? (
+          {centerBig ? (
             <>
               <Text style={styles.centerLabel}>ХАМГИЙН ТОМ</Text>
               <View style={styles.centerTilesRow}>
-                {biggest.view.map((t, i) => (
+                {centerBig.view.map((t, i) => (
                   <ExpoImage
                     key={t.id}
                     source={t.image}
@@ -328,7 +379,7 @@ export default function MultiplayerGame() {
               </View>
               <View style={styles.centerOwnerPill}>
                 <Text style={styles.centerOwnerText}>
-                  {state.players.find((p) => p.seat === biggest.seat)?.name} · {biggest.view[0].title}
+                  {state.players.find((p) => p.seat === centerBig.seat)?.name} · {centerBig.view[0].title}
                 </Text>
               </View>
             </>
@@ -357,7 +408,7 @@ export default function MultiplayerGame() {
                 style={[
                   styles.myPlayedTile,
                   i === 1 && styles.myPlayedTileSecond,
-                  biggest?.seat === mySeat && styles.myPlayedTileWin,
+                  biggestSeat === mySeat && styles.myPlayedTileWin,
                 ]}
               />
             ))}

@@ -2,7 +2,14 @@ import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { autoPlayTimedOut, getMatchState, startMatchFromQueue } from "./services/match.js";
+import {
+  autoPlayTimedOut,
+  BOT_DELAY_MS,
+  getMatchState,
+  playOneBot,
+  ROUND_PAUSE_MS,
+  startMatchFromQueue,
+} from "./services/match.js";
 import {
   drainQueue,
   getQueue,
@@ -48,6 +55,7 @@ const tryStartFromQueue = async ({ force = false } = {}) => {
 
   try {
     const matchId = await startMatchFromQueue({ players, endRule });
+    scheduleBots(matchId);
     for (const p of players) {
       io?.to(userRoom(p.userId)).emit("queue:matched", { matchId });
     }
@@ -115,6 +123,45 @@ export const broadcastMatch = async (matchId) => {
     if (state) socket.emit("match:state", state);
   }
 };
+
+/* ─────────── ботын хурд ─────────── */
+
+// Тоглолт тутам хүлээгдэж буй ботын алхам (давхардуулахгүй)
+const botTimers = new Map();
+
+/**
+ * Ээлж бот дээр байвал delay-ийн дараа НЭГ алхам тоглуулж, бүгдэд цацаад
+ * дараагийн ботыг дахин товлоно. Хүний ээлж ирвэл playOneBot юу ч хийхгүй
+ * тул зогсоно. Хаанаас ч, хэдэн ч удаа дуудаж болно.
+ *
+ * @param delay гар дуусч байвал ROUND_PAUSE_MS — ширээ харагдах хугацаа
+ */
+export const scheduleBots = (matchId, delay = BOT_DELAY_MS) => {
+  if (BOT_DELAY_MS <= 0 || botTimers.has(matchId)) return;
+
+  // Алхам ажиллаж байх хооронд ч бүртгэлтэй үлдэнэ — таймерын sweep давхар товлохгүй
+  const timer = setTimeout(async () => {
+    let next = null;
+    try {
+      const r = await playOneBot(matchId);
+      if (r.played) {
+        await broadcastMatch(matchId);
+        next = r.roundEnded ? ROUND_PAUSE_MS : BOT_DELAY_MS;
+      }
+    } catch (err) {
+      console.error(`🤖 ${matchId} ботын алхам амжилтгүй:`, err.message);
+    } finally {
+      botTimers.delete(matchId);
+    }
+    if (next !== null) scheduleBots(matchId, next);
+  }, delay);
+  timer.unref?.();
+  botTimers.set(matchId, timer);
+};
+
+/** Хүний үйлдлийн дараа: гар дууссан бол ширээг харуулах хугацаа өгнө */
+export const scheduleBotsAfter = (matchId, result) =>
+  scheduleBots(matchId, result?.roundEnded ? ROUND_PAUSE_MS : BOT_DELAY_MS);
 
 export const attachRealtime = (server) => {
   io = new Server(server, {
@@ -253,10 +300,23 @@ export const startTurnTimer = () => {
       for (const row of rows) {
         try {
           const result = await autoPlayTimedOut(row.id);
-          if (!result.skipped) await broadcastMatch(row.id);
+          if (!result.skipped) {
+            await broadcastMatch(row.id);
+            scheduleBotsAfter(row.id, result);
+          }
         } catch (err) {
           console.error(`⏱ ${row.id} автомат гаргалт амжилтгүй:`, err.message);
         }
+      }
+
+      // Ээлж бот дээр байгаа ч товлогдоогүй тоглолтууд (сервер дахин асах г.м.)
+      if (BOT_DELAY_MS > 0) {
+        const bots = await pool.query(
+          `select m.id from matches m
+             join match_players p on p.match_id = m.id and p.seat = m.current_seat
+            where m.status = 'playing' and p.user_id is null`
+        );
+        for (const row of bots.rows) scheduleBots(row.id);
       }
     } catch (err) {
       console.error("⏱ Таймер алдаа:", err.message);

@@ -3,7 +3,7 @@ import { pool } from "../db.js";
 import { requireAuth } from "../lib/auth.js";
 import { badRequest, wrap } from "../lib/errors.js";
 import { END_RULES, GAMER_UNLOCK_WINS } from "../game/endRules.js";
-import { broadcastMatch, notifyUsers } from "../realtime.js";
+import { broadcastMatch, notifyUsers, scheduleBots, scheduleBotsAfter } from "../realtime.js";
 import {
   createMatch,
   getMatchState,
@@ -92,6 +92,7 @@ router.post(
     res.json(state);
     // Бусад тоглогч руу тус бүрийн төлөвийг илгээнэ
     broadcastMatch(req.params.id).catch(() => {});
+    scheduleBots(req.params.id);
   })
 );
 
@@ -111,6 +112,7 @@ router.post(
     const state = await getMatchState(pool, req.params.id, req.user.id);
     res.json({ ...state, result });
     broadcastMatch(req.params.id).catch(() => {});
+    scheduleBotsAfter(req.params.id, result);
   })
 );
 
@@ -130,6 +132,7 @@ router.post(
     const state = await getMatchState(pool, req.params.id, req.user.id);
     res.json({ ...state, result });
     broadcastMatch(req.params.id).catch(() => {});
+    scheduleBots(req.params.id);
   })
 );
 
